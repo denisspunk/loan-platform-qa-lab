@@ -11,9 +11,12 @@ defaults:
   run:
     working-directory: starter
 
+# Job names start with "starter-": the solution's test-pyramid has jobs with the same short names,
+# and branch protection requires checks by name, so the names must be unique across workflows.
 jobs:
   # one service in memory: no HTTP, no Docker
   unit-and-component:
+    name: starter-unit-and-component
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +26,7 @@ jobs:
 
   # what we send to the partner, and what our API promises to other squads
   contract:
+    name: starter-contract
     needs: unit-and-component
     runs-on: ubuntu-latest
     steps:
@@ -33,6 +37,7 @@ jobs:
 
   # the running service over HTTP with a WireMock partner, and Postgres in Docker through Testcontainers
   integration:
+    name: starter-integration
     needs: contract
     runs-on: ubuntu-latest
     steps:
@@ -43,6 +48,7 @@ jobs:
 
   # customer journeys over days of the test clock
   e2e:
+    name: starter-e2e
     needs: integration
     runs-on: ubuntu-latest
     steps:
