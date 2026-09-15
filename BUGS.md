@@ -18,6 +18,9 @@ Not to be confused with `starter/src/main/java/lab/loans/Bugs.java`: those are t
 | F-07 | `relockAt` is sent with microseconds; the contract example has whole seconds | Low | observed in log | Open: question to partner contract |
 | F-08 | `GET /loans/` with an empty id returns 404 instead of 400 | Low | reproduced live | Open |
 | F-09 | `receivedAt` is ignored; unlock time counts from processing, not from payment | Low | code reading | Open: question to product |
+| F-10 | A path outside the API gets an HTML 404 page instead of a JSON error | Low | reproduced live | Open |
+| F-11 | A missing or misspelled field is reported as an invalid value; unknown fields are silently ignored | Low | reproduced live | Open: question to API contract |
+| F-12 | Error responses expose internal JSON parser messages | Low | reproduced live | Open |
 
 ---
 
@@ -161,3 +164,53 @@ Not covered: two service instances processing the same payment at the same momen
 **Why:** `PaymentReceived.receivedAt` is set by the API but never read. The unlock window starts at `clock.instant()` when the processor runs ([PaymentProcessor.java:56](starter/src/main/java/lab/loans/service/PaymentProcessor.java#L56)).
 
 **Question:** if an event is delayed by an hour (consumer lag, retries), should the customer lose that hour of paid time?
+
+---
+
+## F-10 · A path outside the API gets an HTML 404 page instead of a JSON error
+
+**Severity:** Low: a client that always parses JSON breaks on this response.
+
+**Steps (2026-09-15, local run):** `GET /foo`, `GET /`
+
+**Actual:** `404`, `Content-Type: text/html`, body `<h1>404 Not Found</h1>No context found for request`.
+
+**Expected:** the same shape as every other error of the service: `404`, `application/json`, `{"error": "no route for GET /foo"}`. Wrong methods on known paths already answer that way, e.g. `GET /payments` → `{"error":"no route for GET /payments"}`.
+
+**Why:** the JDK `HttpServer` only has contexts for `/loans`, `/payments` and `/health` ([HttpApi.java](starter/src/main/java/lab/loans/api/HttpApi.java)); any other path is answered by the server itself, not by the service code.
+
+**Test:** `HealthAndRoutingTest.pathOutsideTheApiIsRefusedWithAJsonError`, disabled until fixed.
+
+---
+
+## F-11 · A missing or misspelled field is reported as an invalid value; unknown fields are silently ignored
+
+**Severity:** Low / API contract question.
+
+**Steps (2026-09-15, local run)**
+1. `POST /loans {"deviceId":"IMEI","dailyRate":100}` (no `price`) → `400 {"error":"price must be positive"}`
+2. `POST /loans {"deviceId":"1","price":300,"dailyRate":100,"extra":"ignored"}` → `201`
+
+**Actual:** a missing number becomes `0` on deserialization, so the client is told the value is wrong rather than absent. A typo such as `"dailyrate"` is dropped as an unknown field, and the client gets `dailyRate must be positive`.
+
+**Expected:** to be agreed in the API contract: either `"price is required"` for a missing field, or rejecting unknown fields so typos surface immediately.
+
+**Why:** `HttpApi` configures Jackson with `FAIL_ON_UNKNOWN_PROPERTIES = false` and reads amounts into primitive `long` fields, which default to 0.
+
+**Tests:** `LoansApiTest.loanWithAMissingOrInvalidFieldIsRejected` (case "no dailyRate") and `LoansApiTest.unknownFieldsAreIgnored` pin the current behaviour.
+
+---
+
+## F-12 · Error responses expose internal JSON parser messages
+
+**Severity:** Low: leaks implementation details and confuses clients.
+
+**Steps (2026-09-15, local run)**
+- `POST /loans {"deviceId":"IMEI","price":"abc","dailyRate":100}` → `400 {"error":"invalid JSON: Cannot deserialize value of type \`long\` from String \"abc\": not a valid \`long\` value"}`
+- `POST /payments` with an empty body → `400 {"error":"invalid JSON: No content to map due to end-of-input"}`
+
+**Expected:** a stable message owned by the service, e.g. `{"error":"invalid JSON"}` or `{"error":"price must be a number"}`, with parser details only in the service log.
+
+**Why:** `HttpApi.read` appends `JsonProcessingException.getOriginalMessage()` from Jackson to the response.
+
+**Test:** `LoansApiTest.brokenJsonErrorDoesNotExposeParserDetails`, disabled until fixed.
