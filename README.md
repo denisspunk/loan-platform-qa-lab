@@ -29,6 +29,23 @@ mvn test -Dlab.bugs=KNOX_EPOCH_DATE           # включить засеянн�
 
 Тестов по уровням в `solution/`: unit 18, component 3, contract 4, integration 6, e2e 2.
 
+## Стенд и база
+
+- Сервис из `starter/` развёрнут на Render: https://loan-platform-qa-lab.onrender.com (`GET /health`). Деплой идёт после зелёного CI.
+- С `DATABASE_URL` сервис хранит займы и обработанные платежи в Postgres, без неё — в памяти.
+- Бесплатная база Render удаляется 15.10.2026.
+
+Смотреть базу — `tools/db.sh`: psql из Docker, только чтение.
+
+```bash
+export RENDER_API_KEY=rnd_...                 # база на Render; или DATABASE_URL=postgresql://... для своей
+tools/db.sh tables                            # таблицы и число строк
+tools/db.sh loans 10                          # займы, сначала с последними платежами
+tools/db.sh payments LN-6954bb4f              # платежи по займу: APPLIED, LOAN_ALREADY_PAID_OFF
+tools/db.sh sql "SELECT count(*) FROM loans"  # любой запрос
+tools/db.sh psql                              # интерактивный psql
+```
+
 ## Слои каркаса (`src/test/java/lab/qa`)
 
 | Пакет | Что внутри |
