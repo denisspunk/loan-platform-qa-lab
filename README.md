@@ -1,129 +1,129 @@
 # Loan Platform QA Lab
 
-Бэкенд кредитной платформы для телефонов в рассрочку и стратегия его тестирования: от unit-тестов до quality gates при выкатке на dev, stage и prod.
+A backend for phone loans and the strategy for testing it: from unit tests to quality gates on the way through dev, stage and prod.
 
-Клиент берёт телефон в кредит. Каждый платёж покупает дни: пока они есть, телефон разблокирован. Когда дни кончаются, партнёр по блокировке (упрощённый аналог Samsung Knox) снова его блокирует. После выплаты полной цены блокировка снимается навсегда.
+A customer takes a phone on credit. Every payment buys days, and while there are days left the phone stays unlocked. When they run out, the device-lock partner (a simplified stand-in for Samsung Knox) locks it again. Once the full price is paid, the lock is removed for good.
 
-## Сервис
+## Service
 
 ```mermaid
 flowchart LR
     Client -->|POST /loans, GET /loans/id| API[HTTP API]
-    PSP[Платёжный провайдер] -->|POST /payments| API
-    API -->|PaymentReceived| Bus[Event bus<br/>3 попытки, dead letters]
+    PSP[Payment provider] -->|POST /payments| API
+    API -->|PaymentReceived| Bus[Event bus<br/>3 attempts, dead letters]
     Bus --> Processor[PaymentProcessor]
     Processor --> Policy[UnlockPolicy]
-    Processor --> Repo[(LoanRepository<br/>Postgres или память)]
-    Processor -->|unlock, relock, release| Partner[Партнёр блокировки]
+    Processor --> Repo[(LoanRepository<br/>Postgres or memory)]
+    Processor -->|unlock, relock, release| Partner[Device-lock partner]
 ```
 
-Бизнес-правила:
-- Каждая полная дневная ставка покупает день; остаток копится как кредит и добавляется к следующему платежу.
-- Платёж меньше ставки только пополняет кредит: телефон остаётся как есть.
-- Телефон блокируется сам ровно в момент `unlockedUntil`.
-- Когда оплачена вся цена, займ `PAID_OFF`, телефон `RELEASED`.
-- Повторная доставка платежа с тем же `paymentId` не применяется второй раз.
+Business rules:
+- Every full daily rate buys a day; the rest is kept as credit and added to the next payment.
+- A payment below the daily rate only adds to the credit: the phone stays as it is.
+- The phone locks by itself exactly at `unlockedUntil`.
+- When the whole price is paid, the loan is `PAID_OFF` and the phone is `RELEASED`.
+- A payment redelivered with the same `paymentId` is not applied twice.
 
-Стек: Java 21, HTTP-сервер из JDK, Jackson, plain JDBC и Postgres 17 (без `DATABASE_URL` сервис хранит данные в памяти).
+Stack: Java 21, the JDK's built-in HTTP server, Jackson, plain JDBC and Postgres 17 (without `DATABASE_URL` the service keeps data in memory).
 
-## Тестовая пирамида
+## Test pyramid
 
-| Уровень | Что проверяет | Инструменты | Тестов | Где идёт |
+| Level | What it checks | Tools | Tests | Runs |
 |---|---|---|---|---|
-| unit | правила разблокировки, займ, процессор платежей | JUnit 5, AssertJ, Mockito | 35 | каждый PR |
-| component | шина событий и процессор вместе, партнёр — фейк | Awaitility | 5 | каждый PR |
-| contract | что уходит партнёру; ответы API против JSON-схем | WireMock, json-schema-validator | 16 | каждый PR |
-| integration | запущенный сервис по HTTP; репозиторий на реальном Postgres | RestAssured, WireMock, Testcontainers | 43 | каждый PR |
-| e2e | путь клиента за несколько дней тестовых часов | всё выше | 3 | каждый PR |
-| smoke | стенд жив, займ создаётся, платёж проходит | RestAssured | 3 | после деплоя |
-| remote | регрессия API на развёрнутом стенде | RestAssured | 13 | dev и stage |
+| unit | unlock rules, the loan, the payment processor | JUnit 5, AssertJ, Mockito | 35 | every PR |
+| component | event bus and processor together, fake partner | Awaitility | 5 | every PR |
+| contract | what is sent to the partner; API responses against JSON schemas | WireMock, json-schema-validator | 16 | every PR |
+| integration | the running service over HTTP; the repository on a real Postgres | RestAssured, WireMock, Testcontainers | 43 | every PR |
+| e2e | a customer's journey over several days of test clock | all of the above | 3 | every PR |
+| smoke | the stand is up, a loan is created, a payment goes through | RestAssured | 3 | after each deploy |
+| remote | API regression on a deployed stand | RestAssured | 13 | dev and stage |
 
-`mvn test` запускает первые пять уровней: 102 теста, 4 из них — `@Disabled` известных багов (см. ниже).
+`mvn test` runs the first five levels: 102 tests, 4 of them `@Disabled` tests of known bugs (see below).
 
-### Каркас тестов (`service/src/test/java/lab/qa`)
+### Test framework (`service/src/test/java/lab/qa`)
 
-| Пакет | Что внутри |
+| Package | Contents |
 |---|---|
-| `tests/` | тесты; один пакет = один уровень = один `@Tag` |
-| `dsl/` | `LoanSteps`, `PaymentSteps`: шаги словами бизнеса; шаги ждут, проверки остаются в тестах |
-| `data/` | `TestData`: уникальные IMEI и paymentId на каждый тест, билдер `aLoan()` |
-| `clients/` | `LoansApi` (RestAssured), `KnoxStub` (WireMock), модели запросов и ответов |
-| `core/` | `BaseIT` поднимает стаб партнёра и сервис; `RemoteBase` для стенда; `TestClock`; `Config` |
+| `tests/` | the tests; one package = one level = one `@Tag` |
+| `dsl/` | `LoanSteps`, `PaymentSteps`: steps in business words; steps wait, assertions stay in the tests |
+| `data/` | `TestData`: a unique IMEI and paymentId per test, the `aLoan()` builder |
+| `clients/` | `LoansApi` (RestAssured), `KnoxStub` (WireMock), request and response models |
+| `core/` | `BaseIT` starts the partner stub and the service; `RemoteBase` for stands; `TestClock`; `Config` |
 
-Принципы:
-- Тесты не зависят друг от друга и от порядка: данные уникальны, время — управляемые `TestClock`, ожидаемые даты считаются от них, а не хардкодятся.
-- Значения, от которых зависит результат, видны в самом тесте.
-- Несколько проверок одного результата — через soft assertions, чтобы упавший тест показывал всю картину.
-- Известный баг закреплён дважды: зелёный тест текущего поведения с `(F-xx)` в названии и `@Disabled("F-xx: …")` тест ожидаемого. Когда баг починят, первый покраснеет, второй включат.
+Principles:
+- Tests do not depend on each other or on order: data is unique, time comes from a controlled `TestClock`, and expected dates are derived from it, not hardcoded.
+- The values that drive the result are visible in the test itself.
+- Several checks of one result use soft assertions, so a failed test shows the whole picture.
+- A known bug is pinned twice: a passing test of today's behaviour with `(F-xx)` in its name, and a `@Disabled("F-xx: …")` test of the expected one. When the bug is fixed, the first goes red and the second is enabled.
 
 ## Fault injection
 
-В сервис встроены четыре бага, по умолчанию выключены: `mvn test -Dlab.bugs=<баг>`. Число — сколько тестов уровня краснеет (прогон 2026-09-15).
+The service has four seeded bugs, off by default: `mvn test -Dlab.bugs=<bug>`. Each number is how many tests of that level go red (run on 2026-09-15).
 
-| Баг | Что ломает | unit | component | contract | integration | e2e |
+| Bug | What it breaks | unit | component | contract | integration | e2e |
 |---|---|---|---|---|---|---|
-| `ROUNDING_UP` | дни округляются вверх | 8 | 2 | 0 | 2 | 1 |
-| `DOUBLE_PROCESSING` | повторный paymentId применяется снова | 1 | 1 | 0 | 1 | 0 |
-| `KNOX_EPOCH_DATE` | relockAt уходит партнёру числом, а не ISO-строкой | 0 | 0 | 2 | 1 | 2 |
-| `ZERO_AMOUNT_ACCEPTED` | платёж на 0 KES принимается | 0 | 0 | 0 | 1 | 0 |
+| `ROUNDING_UP` | days are rounded up | 8 | 2 | 0 | 2 | 1 |
+| `DOUBLE_PROCESSING` | a repeated paymentId is applied again | 1 | 1 | 0 | 1 | 0 |
+| `KNOX_EPOCH_DATE` | relockAt is sent to the partner as a number, not an ISO string | 0 | 0 | 2 | 1 | 2 |
+| `ZERO_AMOUNT_ACCEPTED` | a payment of 0 KES is accepted | 0 | 0 | 0 | 1 | 0 |
 
-Ни один баг не проходит незамеченным, и видно, какой уровень ловит его раньше и дешевле всего.
+No bug goes unnoticed, and the table shows which level catches each one earliest and cheapest.
 
-## Находки
+## Findings
 
-[BUGS.md](BUGS.md): 12 находок исследовательского тестирования (F-01…F-12) с шагами, доказательствами и статусом. Например, платёж на уже выплаченный займ принимается, а деньги пропадают (F-01); сбой партнёра между unlock и relock оставляет телефон разблокированным навсегда (F-04).
+[BUGS.md](BUGS.md): 12 findings from exploratory testing (F-01…F-12) with steps, evidence and status. For example, a payment to a paid-off loan is accepted and the money disappears (F-01); a partner failure between unlock and relock leaves the phone unlocked for good (F-04).
 
-## CI/CD и quality gates
+## CI/CD and quality gates
 
 ```mermaid
 flowchart LR
     PR[Pull request] --> Pyramid[service-pyramid<br/>unit+component → contract → integration → e2e]
-    Pyramid -->|4 обязательные проверки| Main[main]
+    Pyramid -->|4 required checks| Main[main]
     Main --> Dev[deploy dev] --> G1[gate 1<br/>smoke + remote]
     G1 --> Stage[deploy stage] --> G2[gate 2<br/>smoke + remote]
     G2 --> Approve{approval} --> Prod[deploy prod] --> G3[gate 3<br/>smoke]
-    G3 -->|fail| Rollback[rollback на прежний коммит]
+    G3 -->|fail| Rollback[rollback to the previous commit]
 ```
 
-- В `main` попадают только pull request'ы: четыре стадии пирамиды обязательны, прямой push запрещён.
-- Перед тестами каждая стадия отдельным шагом скачивает зависимости с повторами: сбой Maven Central не выглядит как упавший тест.
-- `delivery` выкатывает один и тот же коммит по окружениям; на prod нужен approve, при провале gate 3 prod откатывается сам.
-- `stand-tests` можно запустить руками против любого стенда: Actions → `stand-tests` → Run workflow.
+- `main` accepts only pull requests: the four pyramid stages are required and direct pushes are blocked.
+- Before the tests, each stage downloads dependencies in a separate step with retries, so a Maven Central outage does not look like a failed test.
+- `delivery` promotes one and the same commit through the environments; prod needs an approval, and if gate 3 fails, prod rolls back by itself.
+- `stand-tests` can be run by hand against any stand: Actions → `stand-tests` → Run workflow.
 
-| Окружение | Стенд | База |
+| Environment | Stand | Database |
 |---|---|---|
-| dev | https://loan-platform-qa-lab.onrender.com | Neon, Франкфурт, Postgres 17 |
-| stage | https://loan-platform-stage.onrender.com | отдельный проект Neon |
-| prod | https://loan-platform-prod.onrender.com | отдельный проект Neon |
+| dev | https://loan-platform-qa-lab.onrender.com | Neon, Frankfurt, Postgres 17 |
+| stage | https://loan-platform-stage.onrender.com | separate Neon project |
+| prod | https://loan-platform-prod.onrender.com | separate Neon project |
 
-Стенды на бесплатном тарифе Render засыпают: первый запрос может идти до минуты, тесты стенда это ждут.
+Stands on Render's free tier fall asleep: the first request can take up to a minute, and the stand tests wait for it.
 
-## Запуск
+## Running
 
-Нужны JDK 21+, Maven и Docker (Testcontainers поднимает Postgres для integration-тестов).
+Requires JDK 21+, Maven and Docker (Testcontainers starts Postgres for the integration tests).
 
 ```bash
 cd service
 mvn test                                      # unit, component, contract, integration, e2e
-mvn test -Dgroups=unit                        # один уровень
-mvn test -Dgroups="integration | e2e"         # несколько уровней
-mvn test -Dtest=UnlockPolicyTest              # один класс
-mvn test -Dlab.bugs=KNOX_EPOCH_DATE           # включить засеянный баг
+mvn test -Dgroups=unit                        # one level
+mvn test -Dgroups="integration | e2e"         # several levels
+mvn test -Dtest=UnlockPolicyTest              # one class
+mvn test -Dlab.bugs=KNOX_EPOCH_DATE           # turn on a seeded bug
 
-# против развёрнутого стенда
+# against a deployed stand
 mvn test -Dgroups="smoke | remote" -DexcludedGroups= -Dlab.baseUrl=https://loan-platform-qa-lab.onrender.com -Dlab.asyncTimeoutSeconds=30
 ```
 
-Сервис локально: `docker build -t loans service && docker run -p 8080:8080 loans`, затем `curl localhost:8080/health`.
+The service locally: `docker build -t loans service && docker run -p 8080:8080 loans`, then `curl localhost:8080/health`.
 
-## Инструменты
+## Tools
 
-Ключи и строки подключения лежат в `.env` в корне: в git он не попадает, список переменных — в [.env.example](.env.example).
+Keys and connection strings live in `.env` at the repository root: it is not committed, and [.env.example](.env.example) lists the variables.
 
 ```bash
-tools/db.sh --env dev tables                  # таблицы и число строк (psql из Docker, только чтение)
-tools/db.sh --env dev loans 10                # последние займы
-tools/db.sh --env dev payments LN-6954bb4f    # платежи по займу: APPLIED, LOAN_ALREADY_PAID_OFF
+tools/db.sh --env dev tables                  # tables and row counts (psql from Docker, read-only)
+tools/db.sh --env dev loans 10                # latest loans
+tools/db.sh --env dev payments LN-6954bb4f    # payments of a loan: APPLIED, LOAN_ALREADY_PAID_OFF
 tools/db.sh --env prod sql "SELECT count(*) FROM loans"
-tools/render.sh live-commit <service-id>      # какой коммит сейчас на стенде
+tools/render.sh live-commit <service-id>      # which commit a stand is running
 ```
