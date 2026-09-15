@@ -6,6 +6,8 @@ import lab.loans.knox.DeviceLockClient;
 import lab.loans.knox.HttpDeviceLockClient;
 import lab.loans.knox.LoggingDeviceLockClient;
 import lab.loans.service.PaymentProcessor;
+import lab.loans.store.InMemoryLoanRepository;
+import lab.loans.store.JdbcLoanRepository;
 import lab.loans.store.LoanRepository;
 
 import java.io.IOException;
@@ -31,7 +33,11 @@ public final class LoanPlatformApp implements AutoCloseable {
 
     public static LoanPlatformApp start(String host, int port, DeviceLockClient deviceLock, Clock clock)
             throws IOException {
-        LoanRepository loans = new LoanRepository();
+        return start(host, port, new InMemoryLoanRepository(), deviceLock, clock);
+    }
+
+    public static LoanPlatformApp start(String host, int port, LoanRepository loans, DeviceLockClient deviceLock,
+                                        Clock clock) throws IOException {
         InMemoryEventBus bus = new InMemoryEventBus();
         PaymentProcessor processor = new PaymentProcessor(loans, deviceLock, clock);
         bus.subscribe(PaymentProcessor.TOPIC, processor::handle);
@@ -57,17 +63,24 @@ public final class LoanPlatformApp implements AutoCloseable {
 
     /**
      * Local run: Run in the IDE. In a container the BIND_HOST and PORT environment variables
-     * (Render sets PORT) win over -Dhost and -Dport. -Dknox.url=... sends real HTTP to a stub.
+     * (Render sets PORT) win over -Dhost and -Dport. DATABASE_URL switches storage from memory to Postgres.
+     * -Dknox.url=... sends real HTTP to a stub.
      */
     public static void main(String[] args) throws IOException {
         String host = setting("BIND_HOST", "host", "127.0.0.1");
         int port = Integer.parseInt(setting("PORT", "port", "8080"));
+        String databaseUrl = System.getenv("DATABASE_URL");
+        boolean postgres = databaseUrl != null && !databaseUrl.isBlank();
+        LoanRepository loans = postgres
+                ? JdbcLoanRepository.fromDatabaseUrl(databaseUrl).migrate()
+                : new InMemoryLoanRepository();
         String knoxUrl = System.getProperty("knox.url");
         DeviceLockClient deviceLock = knoxUrl == null
                 ? new LoggingDeviceLockClient()
                 : new HttpDeviceLockClient(knoxUrl);
-        LoanPlatformApp app = start(host, port, deviceLock, Clock.systemUTC());
-        System.out.println("Loan platform is listening on http://" + host + ":" + app.port);
+        LoanPlatformApp app = start(host, port, loans, deviceLock, Clock.systemUTC());
+        System.out.println("Loan platform is listening on http://" + host + ":" + app.port
+                + " with " + (postgres ? "Postgres" : "in-memory") + " storage");
     }
 
     private static String setting(String envName, String propertyName, String fallback) {

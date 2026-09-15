@@ -18,3 +18,13 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21", cache: maven }
       - run: mvn -B test -Dgroups=unit -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+
+  # The JDBC repository against a real Postgres: Testcontainers uses the Docker engine of the runner.
+  integration:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: mvn -B test -Dgroups=integration -Dsurefire.reportFormat=plain -Dsurefire.useFile=false

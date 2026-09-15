@@ -29,6 +29,18 @@ public class Loan {
         this.dailyRate = dailyRate;
     }
 
+    /** Rebuilds a loan from storage, e.g. a database row. The price and rate are checked like in the constructor. */
+    public static Loan restore(String id, String deviceId, long price, long dailyRate, long paid, long credit,
+                               LoanStatus status, DeviceState deviceState, Instant unlockedUntil) {
+        Loan loan = new Loan(id, deviceId, price, dailyRate);
+        loan.paid = paid;
+        loan.credit = credit;
+        loan.status = status;
+        loan.deviceState = deviceState;
+        loan.unlockedUntil = unlockedUntil;
+        return loan;
+    }
+
     public String id() { return id; }
     public String deviceId() { return deviceId; }
     public long price() { return price; }
@@ -37,6 +49,8 @@ public class Loan {
     public synchronized long credit() { return credit; }
     public synchronized LoanStatus status() { return status; }
     public synchronized Instant unlockedUntil() { return unlockedUntil; }
+    /** The state as stored, for persistence. The phone may already be relocked by time: see deviceStateAt. */
+    public synchronized DeviceState storedDeviceState() { return deviceState; }
 
     public synchronized void apply(long amount, UnlockDecision decision) {
         paid += amount;

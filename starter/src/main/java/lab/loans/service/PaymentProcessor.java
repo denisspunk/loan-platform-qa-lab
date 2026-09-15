@@ -8,14 +8,14 @@ import lab.loans.domain.UnlockPolicy;
 import lab.loans.events.PaymentReceived;
 import lab.loans.knox.DeviceLockClient;
 import lab.loans.store.LoanRepository;
+import lab.loans.store.ProcessedPayment;
 
 import java.time.Clock;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The core-platform chain: payment -> loan -> device -> relock schedule.
  * Consumes "payments.received". Idempotent by paymentId, because the broker delivers at least once.
+ * Processed payment ids are kept by the repository, so with Postgres they survive a restart.
  */
 public class PaymentProcessor {
 
@@ -25,7 +25,6 @@ public class PaymentProcessor {
     private final DeviceLockClient deviceLock;
     private final Clock clock;
     private final UnlockPolicy policy = new UnlockPolicy();
-    private final Set<String> processedPaymentIds = ConcurrentHashMap.newKeySet();
 
     public PaymentProcessor(LoanRepository loans, DeviceLockClient deviceLock, Clock clock) {
         this.loans = loans;
@@ -42,14 +41,14 @@ public class PaymentProcessor {
     }
 
     public ProcessingResult process(PaymentReceived payment) {
-        if (!Bugs.DOUBLE_PROCESSING.isOn() && processedPaymentIds.contains(payment.paymentId())) {
+        if (!Bugs.DOUBLE_PROCESSING.isOn() && loans.isPaymentProcessed(payment.paymentId())) {
             return ProcessingResult.DUPLICATE;
         }
 
         Loan loan = loans.findById(payment.loanId())
                 .orElseThrow(() -> new UnknownLoanException(payment.loanId()));
         if (loan.status() == LoanStatus.PAID_OFF) {
-            processedPaymentIds.add(payment.paymentId());
+            loans.recordPayment(loan, processed(payment, ProcessingResult.LOAN_ALREADY_PAID_OFF));
             return ProcessingResult.LOAN_ALREADY_PAID_OFF;
         }
 
@@ -66,7 +65,12 @@ public class PaymentProcessor {
         }
 
         loan.apply(payment.amount(), decision);
-        processedPaymentIds.add(payment.paymentId());
+        loans.recordPayment(loan, processed(payment, ProcessingResult.APPLIED));
         return ProcessingResult.APPLIED;
+    }
+
+    private ProcessedPayment processed(PaymentReceived payment, ProcessingResult result) {
+        return new ProcessedPayment(
+                payment.paymentId(), payment.loanId(), payment.amount(), result.name(), clock.instant());
     }
 }

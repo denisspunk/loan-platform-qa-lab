@@ -2,21 +2,20 @@ package lab.loans.store;
 
 import lab.loans.domain.Loan;
 
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
-/** In-memory stand-in for Postgres. */
-public class LoanRepository {
+/**
+ * Where loans and the payments applied to them live.
+ * InMemoryLoanRepository serves tests and local runs; JdbcLoanRepository serves Postgres when DATABASE_URL is set.
+ */
+public interface LoanRepository {
 
-    private final Map<String, Loan> loans = new ConcurrentHashMap<>();
+    Loan save(Loan loan);
 
-    public Loan save(Loan loan) {
-        loans.put(loan.id(), loan);
-        return loan;
-    }
+    Optional<Loan> findById(String id);
 
-    public Optional<Loan> findById(String id) {
-        return Optional.ofNullable(loans.get(id));
-    }
+    boolean isPaymentProcessed(String paymentId);
+
+    /** Stores the loan state after a payment and remembers the payment as one step: both or neither. */
+    void recordPayment(Loan loan, ProcessedPayment payment);
 }
