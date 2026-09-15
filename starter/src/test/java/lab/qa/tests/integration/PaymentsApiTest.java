@@ -24,6 +24,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static lab.qa.data.TestData.aLoan;
+import static lab.qa.data.TestData.uniquePaymentId;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.equalTo;
@@ -57,11 +59,14 @@ class PaymentsApiTest {
     @Test
     @DisplayName("Accepted payment unlocks the phone through the partner")
     void acceptedPaymentUnlocksThePhoneThroughThePartner() {
-        String loanId = loansApi.createLoan(new LoanRequest("350000000000501", 12_000, 100))
+        LoanRequest loan = aLoan().price(12_000).dailyRate(100).build();
+        String paymentId = uniquePaymentId();
+
+        String loanId = loansApi.createLoan(loan)
                 .then().statusCode(201)
                 .extract().path("id");
 
-        loansApi.postPayment(new PaymentRequest("MPESA-501", loanId, 300))
+        loansApi.postPayment(new PaymentRequest(paymentId, loanId, 300))
                 .then().statusCode(202);
 
         // 300 KES at 100 KES/day buys 3 days, counted from the fixed clock of this test
@@ -72,10 +77,10 @@ class PaymentsApiTest {
                 .body("deviceState", equalTo("UNLOCKED"))
                 .body("unlockedUntil", equalTo(expectedUntil)));
 
-        assertThat(knox.findAll(postRequestedFor(urlEqualTo("/devices/350000000000501/relock"))))
+        assertThat(knox.findAll(postRequestedFor(urlEqualTo("/devices/" + loan.deviceId() + "/relock"))))
                 .singleElement()
                 .satisfies(call -> {
-                    assertThat(call.getHeader("X-Correlation-Id")).isEqualTo("MPESA-501");
+                    assertThat(call.getHeader("X-Correlation-Id")).isEqualTo(paymentId);
                     assertThat(call.getBodyAsString()).contains(expectedUntil);
                 });
     }
