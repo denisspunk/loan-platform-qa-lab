@@ -39,7 +39,7 @@ on:
 
 defaults:
   run:
-    working-directory: starter
+    working-directory: service
 
 jobs:
   stand-tests:
