@@ -13,6 +13,7 @@ defaults:
 
 # Job names start with "starter-": the solution's test-pyramid has jobs with the same short names,
 # and branch protection requires checks by name, so the names must be unique across workflows.
+# Every job resolves dependencies in its own step first: a Maven Central outage then fails that step, not the tests.
 jobs:
   # one service in memory: no HTTP, no Docker
   unit-and-component:
@@ -22,7 +23,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21", cache: maven }
-      - run: mvn -B test -Dgroups="unit | component" -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+      - name: Resolve dependencies
+        run: ../tools/maven-resolve.sh
+      - name: Unit and component tests
+        run: mvn -B -ntp test -Dgroups="unit | component" -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
 
   # what we send to the partner, and what our API promises to other squads
   contract:
@@ -33,7 +37,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21", cache: maven }
-      - run: mvn -B test -Dgroups=contract -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+      - name: Resolve dependencies
+        run: ../tools/maven-resolve.sh
+      - name: Contract tests
+        run: mvn -B -ntp test -Dgroups=contract -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
 
   # the running service over HTTP with a WireMock partner, and Postgres in Docker through Testcontainers
   integration:
@@ -44,7 +51,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21", cache: maven }
-      - run: mvn -B test -Dgroups=integration -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+      - name: Resolve dependencies
+        run: ../tools/maven-resolve.sh
+      - name: Integration tests
+        run: mvn -B -ntp test -Dgroups=integration -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
 
   # customer journeys over days of the test clock
   e2e:
@@ -55,4 +65,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21", cache: maven }
-      - run: mvn -B test -Dgroups=e2e -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+      - name: Resolve dependencies
+        run: ../tools/maven-resolve.sh
+      - name: End-to-end tests
+        run: mvn -B -ntp test -Dgroups=e2e -Dsurefire.reportFormat=plain -Dsurefire.useFile=false

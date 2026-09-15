@@ -50,12 +50,16 @@ jobs:
           ref: ${{ inputs.ref }}
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21", cache: maven }
+      # a Maven Central outage fails this step, not the stand tests
+      - name: Resolve dependencies
+        run: ../tools/maven-resolve.sh
       # inputs go through environment variables, so nothing typed into the form is pasted into the script
-      - env:
+      - name: Stand tests
+        env:
           BASE_URL: ${{ inputs.base_url }}
           TEST_GROUPS: ${{ inputs.groups }}
         run: >
-          mvn -B test
+          mvn -B -ntp test
           -Dgroups="$TEST_GROUPS" -DexcludedGroups=
           -Dlab.baseUrl="$BASE_URL"
           -Dlab.asyncTimeoutSeconds=30
