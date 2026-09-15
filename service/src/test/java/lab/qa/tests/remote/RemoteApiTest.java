@@ -1,6 +1,7 @@
 package lab.qa.tests.remote;
 
 import lab.qa.clients.LoanJson;
+import lab.qa.clients.PaymentHistoryJson.PaymentJson;
 import lab.qa.clients.PaymentRequest;
 import lab.qa.core.RemoteBase;
 import org.junit.jupiter.api.DisplayName;
@@ -16,6 +17,8 @@ import java.time.Instant;
 import static io.restassured.module.jsv.JsonSchemaValidator.matchesJsonSchemaInClasspath;
 import static lab.qa.data.TestData.aLoan;
 import static lab.qa.data.TestData.uniquePaymentId;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.hamcrest.Matchers.equalTo;
 
@@ -165,5 +168,35 @@ class RemoteApiTest extends RemoteBase {
             softly.assertThat(after.paid()).isEqualTo(300);
             softly.assertThat(after.status()).isEqualTo("PAID_OFF");
         });
+    }
+
+    // --- what the web UI reads -------------------------------------------------------------------
+
+    @Test
+    @DisplayName("Opened loan is listed among the recent loans")
+    void openedLoanIsListed() {
+        LoanJson loan = loanSteps.openLoan(aLoan());
+
+        // other runs may open loans on the same stand at the same time, so look in a wider window
+        assertThat(loanSteps.recentLoans(100)).extracting(LoanJson::id).contains(loan.id());
+    }
+
+    @Test
+    @DisplayName("Payment history shows an applied payment and a payment to the paid-off loan (F-01)")
+    void paymentHistoryShowsBothResults() {
+        LoanJson loan = loanSteps.openLoan(aLoan().price(300).dailyRate(100));
+        String payoff = uniquePaymentId();
+        String late = uniquePaymentId();
+        paymentSteps.pay(loan, payoff, 300);
+        loansApi.postPayment(new PaymentRequest(late, loan.id(), 1_000))
+                .then().statusCode(202);
+        paymentSteps.waitForQueuedPayments();
+
+        loansApi.getPayments(loan.id())
+                .then().statusCode(200)
+                .body(matchesJsonSchemaInClasspath("schemas/payment-history.json"));
+        assertThat(loanSteps.paymentHistory(loan).payments())
+                .extracting(PaymentJson::paymentId, PaymentJson::result)
+                .containsExactly(tuple(payoff, "APPLIED"), tuple(late, "LOAN_ALREADY_PAID_OFF"));
     }
 }

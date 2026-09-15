@@ -16,10 +16,12 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 /** The JDBC repository against a real Postgres in Docker: schema, round trip and the rules the database enforces. */
@@ -89,6 +91,35 @@ class JdbcLoanRepositoryTest {
         repository.recordPayment(loan, payment);
 
         assertThat(repository.isPaymentProcessed(payment.paymentId())).isTrue();
+    }
+
+    @Test
+    @DisplayName("Recent loans come newest first")
+    void recentLoansComeNewestFirst() {
+        Loan older = repository.save(new Loan(newId(), "350000000000005", 12_000, 100));
+        Loan newer = repository.save(new Loan(newId(), "350000000000006", 12_000, 100));
+
+        List<Loan> recent = repository.findRecent(2);
+
+        assertThat(recent).extracting(Loan::id).containsExactly(newer.id(), older.id());
+    }
+
+    @Test
+    @DisplayName("Payments of a loan come in processing order, without other loans' payments")
+    void paymentsComeInProcessingOrder() {
+        Loan loan = repository.save(new Loan(newId(), "350000000000007", 12_000, 100));
+        Loan other = repository.save(new Loan(newId(), "350000000000008", 12_000, 100));
+        repository.recordPayment(loan, new ProcessedPayment("MPESA-B-" + loan.id(), loan.id(), 50, "APPLIED", NOW.plusSeconds(60)));
+        repository.recordPayment(loan, new ProcessedPayment("MPESA-A-" + loan.id(), loan.id(), 150, "APPLIED", NOW));
+        repository.recordPayment(other, new ProcessedPayment("MPESA-" + other.id(), other.id(), 100, "APPLIED", NOW));
+
+        List<ProcessedPayment> payments = repository.findPayments(loan.id());
+
+        assertThat(payments)
+                .extracting(ProcessedPayment::paymentId, ProcessedPayment::amount, ProcessedPayment::processedAt)
+                .containsExactly(
+                        tuple("MPESA-A-" + loan.id(), 150L, NOW),
+                        tuple("MPESA-B-" + loan.id(), 50L, NOW.plusSeconds(60)));
     }
 
     @Test

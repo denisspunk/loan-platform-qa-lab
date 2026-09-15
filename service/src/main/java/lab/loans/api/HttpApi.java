@@ -7,6 +7,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import lab.loans.Bugs;
 import lab.loans.domain.Loan;
+import lab.loans.domain.LoanView;
 import lab.loans.events.EventBus;
 import lab.loans.events.PaymentReceived;
 import lab.loans.service.PaymentProcessor;
@@ -16,21 +17,34 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * REST API on the JDK's built-in HTTP server, so the service needs no framework.
  *   POST /loans          {"deviceId","price","dailyRate"}   -> 201 loan
+ *   GET  /loans?limit=N                                     -> 200 {"loans":[...]} newest first | 400
  *   GET  /loans/{id}                                        -> 200 loan | 404
+ *   GET  /loans/{id}/payments                               -> 200 {"loanId","payments":[...]} | 404
  *   POST /payments       {"paymentId","loanId","amount"}    -> 202 accepted | 400 | 404
  *   GET  /health                                            -> 200 {"status":"UP"}
+ *   GET  /                                                  -> 200 the web UI (text/html)
+ * Any other path gets a JSON 404.
  * A payment is only validated here; it is applied asynchronously by the payments.received consumer.
  */
 public class HttpApi {
+
+    static final int DEFAULT_LIMIT = 20;
+    static final int MAX_LIMIT = 100;
+    private static final Pattern PAYMENTS_PATH = Pattern.compile("^/loans/([^/]+)/payments$");
+    private static final Pattern LIMIT_PARAM = Pattern.compile("(?:^|&)limit=([^&]*)");
 
     private final LoanRepository loans;
     private final EventBus bus;
@@ -57,6 +71,7 @@ public class HttpApi {
         server.createContext("/loans", exchange -> handle(exchange, this::routeLoans));
         server.createContext("/payments", exchange -> handle(exchange, this::routePayments));
         server.createContext("/health", exchange -> handle(exchange, this::routeHealth));
+        server.createContext("/", exchange -> handle(exchange, this::routeWeb));
         server.setExecutor(executor);
         server.start();
         return server.getAddress().getPort();
@@ -107,6 +122,20 @@ public class HttpApi {
             }
             Loan loan = loans.save(new Loan(newId("LN"), request.deviceId(), request.price(), request.dailyRate()));
             send(exchange, 201, loan.view(clock.instant()));
+        } else if (method.equals("GET") && path.equals("/loans")) {
+            Instant now = clock.instant();
+            List<LoanView> recent = loans.findRecent(limit(exchange)).stream().map(loan -> loan.view(now)).toList();
+            send(exchange, 200, Map.of("loans", recent));
+        } else if (method.equals("GET") && PAYMENTS_PATH.matcher(path).matches()) {
+            Matcher matcher = PAYMENTS_PATH.matcher(path);
+            matcher.matches();
+            String loanId = matcher.group(1);
+            if (loans.findById(loanId).isEmpty()) {
+                send(exchange, 404, error("loan " + loanId + " not found"));
+                return;
+            }
+            List<PaymentView> payments = loans.findPayments(loanId).stream().map(PaymentView::of).toList();
+            send(exchange, 200, new PaymentHistory(loanId, payments));
         } else if (method.equals("GET") && path.startsWith("/loans/")) {
             String loanId = path.substring("/loans/".length());
             Optional<Loan> loan = loans.findById(loanId);
@@ -118,6 +147,60 @@ public class HttpApi {
         } else {
             send(exchange, 404, error("no route for " + method + " " + path));
         }
+    }
+
+    /** GET /loans/{id}/payments. A record keeps loanId before payments in the JSON. */
+    private record PaymentHistory(String loanId, List<PaymentView> payments) {
+    }
+
+    private static int limit(HttpExchange exchange) {
+        String query = exchange.getRequestURI().getRawQuery();
+        Matcher matcher = LIMIT_PARAM.matcher(query == null ? "" : query);
+        if (!matcher.find()) {
+            return DEFAULT_LIMIT;
+        }
+        try {
+            int limit = Integer.parseInt(matcher.group(1));
+            if (limit >= 1 && limit <= MAX_LIMIT) {
+                return limit;
+            }
+        } catch (NumberFormatException ignored) {
+            // answered below like an out-of-range number
+        }
+        throw new BadRequest("limit must be a number from 1 to " + MAX_LIMIT);
+    }
+
+    /** The web UI at the root; every other path outside the API gets the same JSON 404 as the API itself. */
+    private void routeWeb(HttpExchange exchange) throws IOException {
+        String method = exchange.getRequestMethod();
+        String path = exchange.getRequestURI().getPath();
+        if (method.equals("GET") && (path.equals("/") || path.equals("/index.html"))) {
+            sendPage(exchange, WebPage.INDEX);
+            return;
+        }
+        send(exchange, 404, error("no route for " + method + " " + path));
+    }
+
+    /** The page is read from the classpath once, on first use. */
+    private static final class WebPage {
+        static final byte[] INDEX = read("/web/index.html");
+
+        private static byte[] read(String resource) {
+            try (InputStream page = HttpApi.class.getResourceAsStream(resource)) {
+                if (page == null) {
+                    throw new IllegalStateException(resource + " is missing from the classpath");
+                }
+                return page.readAllBytes();
+            } catch (IOException e) {
+                throw new IllegalStateException("could not read " + resource, e);
+            }
+        }
+    }
+
+    private void sendPage(HttpExchange exchange, byte[] page) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+        exchange.sendResponseHeaders(200, page.length);
+        exchange.getResponseBody().write(page);
     }
 
     /** Liveness for the hosting platform and smoke tests: no dependencies are checked yet. */

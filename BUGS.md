@@ -18,7 +18,7 @@ Not to be confused with `service/src/main/java/lab/loans/Bugs.java`: those are s
 | F-07 | `relockAt` is sent with microseconds; the contract example has whole seconds | Low | observed in log | Open: question to partner contract |
 | F-08 | `GET /loans/` with an empty id returns 404 instead of 400 | Low | reproduced live | Open |
 | F-09 | `receivedAt` is ignored; unlock time counts from processing, not from payment | Low | code reading | Open: question to product |
-| F-10 | A path outside the API gets an HTML 404 page instead of a JSON error | Low | reproduced live | Open |
+| F-10 | A path outside the API gets an HTML 404 page instead of a JSON error | Low | reproduced live | Fixed with the web UI |
 | F-11 | A missing or misspelled field is reported as an invalid value; unknown fields are silently ignored | Low | reproduced live | Open: question to API contract |
 | F-12 | Error responses expose internal JSON parser messages | Low | reproduced live | Open |
 
@@ -179,7 +179,7 @@ Not covered: two service instances processing the same payment at the same momen
 
 **Why:** the JDK `HttpServer` only has contexts for `/loans`, `/payments` and `/health` ([HttpApi.java](service/src/main/java/lab/loans/api/HttpApi.java)); any other path is answered by the server itself, not by the service code.
 
-**Test:** `HealthAndRoutingTest.pathOutsideTheApiIsRefusedWithAJsonError`, disabled until fixed.
+**Fixed** when the web UI took the root path: a `/` context now serves the page at `GET /` and answers every other path outside the API with the JSON 404. `HealthAndRoutingTest.pathOutsideTheApiIsRefusedWithAJsonError` is enabled and covers `GET /unknown`, `GET /favicon.ico` and `POST /`.
 
 ---
 

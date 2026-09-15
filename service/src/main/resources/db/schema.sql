@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS loans (
     CONSTRAINT paid_off_means_released CHECK ((status = 'PAID_OFF') = (device_state = 'RELEASED'))
 );
 
+-- added after the first release: databases created earlier get the column with the migration time
+ALTER TABLE loans ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+
 CREATE TABLE IF NOT EXISTS processed_payments (
     payment_id   text        PRIMARY KEY,
     loan_id      text        NOT NULL REFERENCES loans (id),

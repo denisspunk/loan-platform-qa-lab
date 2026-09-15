@@ -11,7 +11,9 @@ import java.time.Instant;
 
 import static lab.qa.data.TestData.aLoan;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.startsWith;
 
 /** The first check after a deploy: the stand is up, a loan opens and a payment goes all the way through. */
 @Tag("smoke")
@@ -27,6 +29,15 @@ class StandSmokeTest extends RemoteBase {
         loansApi.health()
                 .then().statusCode(200)
                 .body("status", equalTo("UP"));
+    }
+
+    @Test
+    @DisplayName("Web UI page is served")
+    void webUiPageIsServed() {
+        loansApi.homePage()
+                .then().statusCode(200)
+                .contentType(startsWith("text/html"))
+                .body(containsString("<title>Loan Platform</title>"));
     }
 
     @Test
