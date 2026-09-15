@@ -9,11 +9,11 @@ Not to be confused with `starter/src/main/java/lab/loans/Bugs.java`: those are t
 
 | ID | Finding | Severity | Evidence | Status |
 |---|---|---|---|---|
-| F-01 | Payment for a paid-off loan is accepted and silently dropped | High | reproduced live | Open: needs product decision |
+| F-01 | Payment for a paid-off loan is accepted and silently dropped | High | reproduced live | Partly addressed in `starter` (a344ffb): recorded in Postgres; money handling still needs product decision |
 | F-02 | Overpayment on the final payment is not tracked | High | reproduced live | Open: needs product decision |
 | F-03 | Scheduled relock is not cancelled when the loan is paid off | Critical, if the partner does not cancel it | observed in log | Open: question to partner contract |
 | F-04 | Partner failure between unlock and relock leaves the phone unlocked for good | High | code reading | Open: reproduce with KnoxStub |
-| F-05 | Duplicate protection lives in memory and is lost on restart | Medium | code reading | Open: risk |
+| F-05 | Duplicate protection lives in memory and is lost on restart | Medium | code reading | Fixed in `starter` (a344ffb) when running with Postgres; verified locally and on Render |
 | F-06 | Unlock is sent again for a phone that is already unlocked | Low | observed in log | Open: question to partner contract |
 | F-07 | `relockAt` is sent with microseconds; the contract example has whole seconds | Low | observed in log | Open: question to partner contract |
 | F-08 | `GET /loans/` with an empty id returns 404 instead of 400 | Low | reproduced live | Open |
@@ -36,7 +36,15 @@ Not to be confused with `starter/src/main/java/lab/loans/Bugs.java`: those are t
 
 **Expected:** to be decided by product: refund, keep as customer balance, reject, or at least put the payment on a manual-review queue and alert ops.
 
-**Why:** [PaymentProcessor.java:51-53](starter/src/main/java/lab/loans/service/PaymentProcessor.java#L51-L53) records the id and returns `LOAN_ALREADY_PAID_OFF`, but [handle() on line 41](starter/src/main/java/lab/loans/service/PaymentProcessor.java#L41) discards the result. Nothing else in the service reads `ProcessingResult`. The branch is deliberate, so this is a requirements gap rather than a coding slip, but it still needs a ticket.
+**Why:** `PaymentProcessor` records the id and returns `LOAN_ALREADY_PAID_OFF`, but `handle()` discards the result. Nothing else in the service reads `ProcessingResult`. The branch is deliberate, so this is a requirements gap rather than a coding slip, but it still needs a ticket. (Line references in the original report pointed to the in-memory version of the processor.)
+
+**Update 2026-09-15, commit a344ffb:** with `DATABASE_URL` set, the payment is no longer lost without a trace. It is stored in `processed_payments` with its amount and result. Verified locally against Postgres in Docker:
+```
+ payment_id | amount | result
+------------+--------+-----------------------
+ MPESA-3    |   1000 | LOAN_ALREADY_PAID_OFF
+```
+Still open: the API answers `202`, nobody is alerted, and what happens to the money (refund, balance, manual review) is a product decision.
 
 ---
 
@@ -101,6 +109,14 @@ Not to be confused with `starter/src/main/java/lab/loans/Bugs.java`: those are t
 **Why:** processed ids are a `Set` in memory ([PaymentProcessor.java:28](starter/src/main/java/lab/loans/service/PaymentProcessor.java#L28)). Kafka redelivers events after a consumer restart, so a payment processed just before a restart can be applied twice.
 
 **Note:** cannot be reproduced in the lab, because loans are in memory too and vanish on restart. In production, store processed ids next to the loan, with a unique constraint on `paymentId`.
+
+**Fixed 2026-09-15 in `starter`, commit a344ffb**, when the service runs with `DATABASE_URL`: processed payments live in the Postgres table `processed_payments` with `payment_id` as the primary key, and the loan update and the payment record are written in one transaction. Without `DATABASE_URL` the service still keeps them in memory, as before.
+
+Verified twice:
+- **Locally, Postgres in Docker:** pay `MPESA-1` 150 → stop and start the service → the loan still shows `paid 150` → redeliver `MPESA-1`, then pay `MPESA-2` 150. The table holds one `MPESA-1` row and `MPESA-2` as `APPLIED`, so the redelivery was ignored.
+- **On Render, 12:24 UTC:** pay `RENDER-MPESA-1` 150 → restart the service through the Render API (new start logged at 12:24:34, `with Postgres storage`) → the loan still shows `paid 150` → redeliver `RENDER-MPESA-1`, then pay `RENDER-MPESA-2` 150. The partner log shows `release ... (correlation RENDER-MPESA-2)`: had the redelivery been applied, the release would have carried `RENDER-MPESA-1`.
+
+Not covered: two service instances processing the same payment at the same moment. The check and the insert are separate statements, so this needs a row lock or relying on the primary key conflict once the service scales out.
 
 ---
 
