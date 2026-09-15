@@ -1,19 +1,19 @@
 # Findings: loan service exploratory session
 
 Defects, risks and open questions found while reading the service and poking it live.
-Not to be confused with `starter/src/main/java/lab/loans/Bugs.java`: those are the lab's seeded bugs, switched on with `-Dlab.bugs=...`. Everything below is present with **no** seeded bug enabled.
+Not to be confused with `service/src/main/java/lab/loans/Bugs.java`: those are seeded bugs for fault injection, switched on with `-Dlab.bugs=...`. Everything below is present with **no** seeded bug enabled.
 
 - **Date:** 2026-09-15
-- **Build:** `starter/`, JDK 26.0.2.1, service run locally on `http://127.0.0.1:8080` with `LoggingDeviceLockClient` (partner calls are printed, not sent)
+- **Build:** `service/` (then named `starter/`), JDK 26.0.2.1, service run locally on `http://127.0.0.1:8080` with `LoggingDeviceLockClient` (partner calls are printed, not sent)
 - **Evidence:** *reproduced live*: request and response seen · *observed in log*: partner call printed by the service · *code reading*: not reproduced yet
 
 | ID | Finding | Severity | Evidence | Status |
 |---|---|---|---|---|
-| F-01 | Payment for a paid-off loan is accepted and silently dropped | High | reproduced live | Partly addressed in `starter` (a344ffb): recorded in Postgres; money handling still needs product decision |
+| F-01 | Payment for a paid-off loan is accepted and silently dropped | High | reproduced live | Partly addressed (a344ffb): recorded in Postgres; money handling still needs product decision |
 | F-02 | Overpayment on the final payment is not tracked | High | reproduced live | Open: needs product decision |
 | F-03 | Scheduled relock is not cancelled when the loan is paid off | Critical, if the partner does not cancel it | observed in log | Open: question to partner contract |
 | F-04 | Partner failure between unlock and relock leaves the phone unlocked for good | High | code reading | Open: reproduce with KnoxStub |
-| F-05 | Duplicate protection lives in memory and is lost on restart | Medium | code reading | Fixed in `starter` (a344ffb) when running with Postgres; verified locally and on Render |
+| F-05 | Duplicate protection lives in memory and is lost on restart | Medium | code reading | Fixed (a344ffb) when running with Postgres; verified locally and on Render |
 | F-06 | Unlock is sent again for a phone that is already unlocked | Low | observed in log | Open: question to partner contract |
 | F-07 | `relockAt` is sent with microseconds; the contract example has whole seconds | Low | observed in log | Open: question to partner contract |
 | F-08 | `GET /loans/` with an empty id returns 404 instead of 400 | Low | reproduced live | Open |
@@ -63,7 +63,7 @@ Still open: the API answers `202`, nobody is alerted, and what happens to the mo
 
 **Expected:** to be decided by product, same options as F-01.
 
-**Why:** [Loan.java:69](starter/src/main/java/lab/loans/domain/Loan.java#L69) reports `balance` as `Math.max(0, price - paid)`, so a negative balance is clamped to 0; the release decision sets credit to 0.
+**Why:** [Loan.java:69](service/src/main/java/lab/loans/domain/Loan.java#L69) reports `balance` as `Math.max(0, price - paid)`, so a negative balance is clamped to 0; the release decision sets credit to 0.
 
 ---
 
@@ -81,7 +81,7 @@ Still open: the API answers `202`, nobody is alerted, and what happens to the mo
 
 **Expected:** the phone stays unlocked after payoff. Either `release` is documented to cancel pending relocks, or the service cancels them explicitly.
 
-**Why:** [PaymentProcessor.java:62](starter/src/main/java/lab/loans/service/PaymentProcessor.java#L62) calls only `release`. Whether that is enough depends on partner behaviour that the service code cannot show.
+**Why:** [PaymentProcessor.java:62](service/src/main/java/lab/loans/service/PaymentProcessor.java#L62) calls only `release`. Whether that is enough depends on partner behaviour that the service code cannot show.
 
 **Next:** ask the partner contract owner; e2e case: pay off during an unlock window, advance `TestClock` past `unlockedUntil`, expect `RELEASED`.
 
@@ -92,16 +92,16 @@ Still open: the API answers `202`, nobody is alerted, and what happens to the mo
 **Severity:** High: free unlocked phone, and our records disagree with the partner.
 
 **Scenario (code reading, not reproduced)**
-1. Payment arrives, `unlock` succeeds at the partner ([line 59](starter/src/main/java/lab/loans/service/PaymentProcessor.java#L59)).
-2. `scheduleRelock` fails, e.g. partner returns 500 → `DeviceLockException`, a `RuntimeException` ([line 60](starter/src/main/java/lab/loans/service/PaymentProcessor.java#L60)).
+1. Payment arrives, `unlock` succeeds at the partner ([line 59](service/src/main/java/lab/loans/service/PaymentProcessor.java#L59)).
+2. `scheduleRelock` fails, e.g. partner returns 500 → `DeviceLockException`, a `RuntimeException` ([line 60](service/src/main/java/lab/loans/service/PaymentProcessor.java#L60)).
 3. `loan.apply` (line 68) and recording the id (line 69) are skipped.
-4. The bus retries 3 times ([InMemoryEventBus.java:47-55](starter/src/main/java/lab/loans/events/InMemoryEventBus.java#L47-L55)): `unlock` is sent again each time, relock keeps failing → dead letter.
+4. The bus retries 3 times ([InMemoryEventBus.java:47-55](service/src/main/java/lab/loans/events/InMemoryEventBus.java#L47-L55)): `unlock` is sent again each time, relock keeps failing → dead letter.
 
 **Actual (expected by reading):** at the partner, the phone is unlocked with no relock scheduled. In our service, the loan is still `LOCKED` and the payment is not applied.
 
 **Expected:** no unlock without a scheduled relock: schedule the relock first, or compensate with a lock when relock fails.
 
-**Next:** reproduce in lessons 5 and 7 with `KnoxStub` answering 500 on `/relock`.
+**Reproduced** with the partner answering 500 on `/relock`: pinned in `PaymentConsumerTest` (component) and `PaymentsApiTest` (integration), each with a passing test of today's behaviour and a `@Disabled("F-04")` test of the expected one.
 
 ---
 
@@ -109,11 +109,11 @@ Still open: the API answers `202`, nobody is alerted, and what happens to the mo
 
 **Severity:** Medium (risk).
 
-**Why:** processed ids are a `Set` in memory ([PaymentProcessor.java:28](starter/src/main/java/lab/loans/service/PaymentProcessor.java#L28)). Kafka redelivers events after a consumer restart, so a payment processed just before a restart can be applied twice.
+**Why:** processed ids are a `Set` in memory ([PaymentProcessor.java:28](service/src/main/java/lab/loans/service/PaymentProcessor.java#L28)). Kafka redelivers events after a consumer restart, so a payment processed just before a restart can be applied twice.
 
-**Note:** cannot be reproduced in the lab, because loans are in memory too and vanish on restart. In production, store processed ids next to the loan, with a unique constraint on `paymentId`.
+**Note:** could not be reproduced while loans were in memory too, because they vanished on restart. In production, store processed ids next to the loan, with a unique constraint on `paymentId`.
 
-**Fixed 2026-09-15 in `starter`, commit a344ffb**, when the service runs with `DATABASE_URL`: processed payments live in the Postgres table `processed_payments` with `payment_id` as the primary key, and the loan update and the payment record are written in one transaction. Without `DATABASE_URL` the service still keeps them in memory, as before.
+**Fixed 2026-09-15 commit a344ffb**, when the service runs with `DATABASE_URL`: processed payments live in the Postgres table `processed_payments` with `payment_id` as the primary key, and the loan update and the payment record are written in one transaction. Without `DATABASE_URL` the service still keeps them in memory, as before.
 
 Verified twice:
 - **Locally, Postgres in Docker:** pay `MPESA-1` 150 → stop and start the service → the loan still shows `paid 150` → redeliver `MPESA-1`, then pay `MPESA-2` 150. The table holds one `MPESA-1` row and `MPESA-2` as `APPLIED`, so the redelivery was ignored.
@@ -137,7 +137,7 @@ Not covered: two service instances processing the same payment at the same momen
 
 **Severity:** Low / contract question.
 
-**Observed:** `relock ... at 2026-09-16T08:54:19.244206Z`. The partner contract in [HttpDeviceLockClient.java](starter/src/main/java/lab/loans/knox/HttpDeviceLockClient.java) shows `"relockAt": "2026-09-16T09:00:00Z"`. The HTTP client sends `relockAt.toString()` ([line 40](starter/src/main/java/lab/loans/knox/HttpDeviceLockClient.java#L40)), which keeps the fraction.
+**Observed:** `relock ... at 2026-09-16T08:54:19.244206Z`. The partner contract in [HttpDeviceLockClient.java](service/src/main/java/lab/loans/knox/HttpDeviceLockClient.java) shows `"relockAt": "2026-09-16T09:00:00Z"`. The HTTP client sends `relockAt.toString()` ([line 40](service/src/main/java/lab/loans/knox/HttpDeviceLockClient.java#L40)), which keeps the fraction.
 
 **Question:** does the real partner parse fractional seconds? A contract test should pin the exact format.
 
@@ -153,7 +153,7 @@ Not covered: two service instances processing the same payment at the same momen
 
 **Expected:** `400`, "loan id is required", or `404 no route`.
 
-**Why:** [HttpApi.java:103-109](starter/src/main/java/lab/loans/api/HttpApi.java#L103-L109) takes everything after `/loans/` as the id, including an empty string.
+**Why:** [HttpApi.java:103-109](service/src/main/java/lab/loans/api/HttpApi.java#L103-L109) takes everything after `/loans/` as the id, including an empty string.
 
 ---
 
@@ -161,7 +161,7 @@ Not covered: two service instances processing the same payment at the same momen
 
 **Severity:** Low / product question.
 
-**Why:** `PaymentReceived.receivedAt` is set by the API but never read. The unlock window starts at `clock.instant()` when the processor runs ([PaymentProcessor.java:56](starter/src/main/java/lab/loans/service/PaymentProcessor.java#L56)).
+**Why:** `PaymentReceived.receivedAt` is set by the API but never read. The unlock window starts at `clock.instant()` when the processor runs ([PaymentProcessor.java:56](service/src/main/java/lab/loans/service/PaymentProcessor.java#L56)).
 
 **Question:** if an event is delayed by an hour (consumer lag, retries), should the customer lose that hour of paid time?
 
@@ -177,7 +177,7 @@ Not covered: two service instances processing the same payment at the same momen
 
 **Expected:** the same shape as every other error of the service: `404`, `application/json`, `{"error": "no route for GET /foo"}`. Wrong methods on known paths already answer that way, e.g. `GET /payments` → `{"error":"no route for GET /payments"}`.
 
-**Why:** the JDK `HttpServer` only has contexts for `/loans`, `/payments` and `/health` ([HttpApi.java](starter/src/main/java/lab/loans/api/HttpApi.java)); any other path is answered by the server itself, not by the service code.
+**Why:** the JDK `HttpServer` only has contexts for `/loans`, `/payments` and `/health` ([HttpApi.java](service/src/main/java/lab/loans/api/HttpApi.java)); any other path is answered by the server itself, not by the service code.
 
 **Test:** `HealthAndRoutingTest.pathOutsideTheApiIsRefusedWithAJsonError`, disabled until fixed.
 

@@ -1,5 +1,5 @@
-# Delivery of the starter service: one commit, chosen once, promoted dev -> stage -> prod through quality gates.
-#   gate 0: starter-pyramid is green on main (this workflow starts only after that)
+# Delivery of the service: one commit, chosen once, promoted dev -> stage -> prod through quality gates.
+#   gate 0: service-pyramid is green on main (this workflow starts only after that)
 #   gate 1: smoke and remote API regression on dev
 #   gate 2: smoke and remote API regression on stage
 #   approval: the prod environment waits for a reviewer
@@ -8,7 +8,7 @@ name: delivery
 
 on:
   workflow_run:
-    workflows: [starter-pyramid]
+    workflows: [service-pyramid]
     types: [completed]
     branches: [main]
   workflow_dispatch:

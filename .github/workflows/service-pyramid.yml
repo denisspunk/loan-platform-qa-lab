@@ -1,0 +1,70 @@
+# The test pyramid of the deployable service in service/, as CI stages: cheap levels first,
+# each stage runs only if the one below is green. Render deploys only after every check passes.
+name: service-pyramid
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: service
+
+# Branch protection on main requires these jobs by name: service-unit-and-component, service-contract,
+# service-integration, service-e2e. Every job resolves dependencies in its own step first: a Maven Central outage then fails that step, not the tests.
+jobs:
+  # one service in memory: no HTTP, no Docker
+  unit-and-component:
+    name: service-unit-and-component
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - name: Resolve dependencies
+        run: ../tools/maven-resolve.sh
+      - name: Unit and component tests
+        run: mvn -B -ntp test -Dgroups="unit | component" -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+
+  # what we send to the partner, and what our API promises to other squads
+  contract:
+    name: service-contract
+    needs: unit-and-component
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - name: Resolve dependencies
+        run: ../tools/maven-resolve.sh
+      - name: Contract tests
+        run: mvn -B -ntp test -Dgroups=contract -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+
+  # the running service over HTTP with a WireMock partner, and Postgres in Docker through Testcontainers
+  integration:
+    name: service-integration
+    needs: contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - name: Resolve dependencies
+        run: ../tools/maven-resolve.sh
+      - name: Integration tests
+        run: mvn -B -ntp test -Dgroups=integration -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+
+  # customer journeys over days of the test clock
+  e2e:
+    name: service-e2e
+    needs: integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - name: Resolve dependencies
+        run: ../tools/maven-resolve.sh
+      - name: End-to-end tests
+        run: mvn -B -ntp test -Dgroups=e2e -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
