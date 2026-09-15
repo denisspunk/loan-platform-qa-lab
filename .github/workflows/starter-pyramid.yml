@@ -1,0 +1,52 @@
+# The test pyramid of the deployable service in starter/, as CI stages: cheap levels first,
+# each stage runs only if the one below is green. Render deploys only after every check passes.
+name: starter-pyramid
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: starter
+
+jobs:
+  # one service in memory: no HTTP, no Docker
+  unit-and-component:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: mvn -B test -Dgroups="unit | component" -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+
+  # what we send to the partner, and what our API promises to other squads
+  contract:
+    needs: unit-and-component
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: mvn -B test -Dgroups=contract -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+
+  # the running service over HTTP with a WireMock partner, and Postgres in Docker through Testcontainers
+  integration:
+    needs: contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: mvn -B test -Dgroups=integration -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+
+  # customer journeys over days of the test clock
+  e2e:
+    needs: integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: mvn -B test -Dgroups=e2e -Dsurefire.reportFormat=plain -Dsurefire.useFile=false

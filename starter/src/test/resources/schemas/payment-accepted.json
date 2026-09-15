@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "PaymentAccepted",
+  "type": "object",
+  "required": ["paymentId", "status"],
+  "properties": {
+    "paymentId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["ACCEPTED"] }
+  },
+  "additionalProperties": false
+}
