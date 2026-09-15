@@ -1,83 +1,39 @@
 package lab.qa.tests.integration;
 
-import com.github.tomakehurst.wiremock.WireMockServer;
-import lab.loans.LoanPlatformApp;
-import lab.loans.knox.HttpDeviceLockClient;
-import lab.qa.clients.LoanRequest;
-import lab.qa.clients.LoansApi;
-import lab.qa.clients.PaymentRequest;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import lab.qa.clients.LoanJson;
+import lab.qa.core.BaseIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneOffset;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.ok;
-import static com.github.tomakehurst.wiremock.client.WireMock.post;
-import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static lab.qa.data.TestData.aLoan;
 import static lab.qa.data.TestData.uniquePaymentId;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.equalTo;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 @Tag("integration")
 @DisplayName("Payments API: HTTP in, event bus, processor, partner out")
-class PaymentsApiTest {
-
-    private static final Instant NOW = Instant.parse("2026-09-15T09:00:00Z");
-
-    private static WireMockServer knox;
-    private static LoanPlatformApp app;
-    private static LoansApi loansApi;
-
-    @BeforeAll
-    static void startPartnerStubAndService() throws IOException {
-        knox = new WireMockServer(options().dynamicPort());
-        knox.start();
-        knox.stubFor(post(urlPathMatching("/devices/.*")).willReturn(ok()));
-
-        app = LoanPlatformApp.start(0, new HttpDeviceLockClient(knox.baseUrl()), Clock.fixed(NOW, ZoneOffset.UTC));
-        loansApi = new LoansApi(app.baseUrl());
-    }
-
-    @AfterAll
-    static void stopServiceAndStub() {
-        app.close();
-        knox.stop();
-    }
+class PaymentsApiTest extends BaseIT {
 
     @Test
     @DisplayName("Accepted payment unlocks the phone through the partner")
     void acceptedPaymentUnlocksThePhoneThroughThePartner() {
-        LoanRequest loan = aLoan().price(12_000).dailyRate(100).build();
+        Instant now = clock.instant();
+        LoanJson loan = loanSteps.openLoan(aLoan().price(12_000).dailyRate(100));
         String paymentId = uniquePaymentId();
 
-        String loanId = loansApi.createLoan(loan)
-                .then().statusCode(201)
-                .extract().path("id");
+        LoanJson paid = paymentSteps.pay(loan, paymentId, 300);
 
-        loansApi.postPayment(new PaymentRequest(paymentId, loanId, 300))
-                .then().statusCode(202);
-
-        // 300 KES at 100 KES/day buys 3 days, counted from the fixed clock of this test
-        String expectedUntil = NOW.plus(Duration.ofDays(3)).toString();
-
-        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> loansApi.getLoan(loanId)
-                .then().statusCode(200)
-                .body("deviceState", equalTo("UNLOCKED"))
-                .body("unlockedUntil", equalTo(expectedUntil)));
-
-        assertThat(knox.findAll(postRequestedFor(urlEqualTo("/devices/" + loan.deviceId() + "/relock"))))
+        // 300 KES at 100 KES/day buys 3 days, counted from the test clock
+        String expectedUntil = now.plus(Duration.ofDays(3)).toString();
+        assertSoftly(softly -> {
+            softly.assertThat(paid.deviceState()).isEqualTo("UNLOCKED");
+            softly.assertThat(paid.unlockedUntil()).isEqualTo(expectedUntil);
+        });
+        assertThat(knox.callsFor(loan.deviceId(), "relock"))
                 .singleElement()
                 .satisfies(call -> {
                     assertThat(call.getHeader("X-Correlation-Id")).isEqualTo(paymentId);
