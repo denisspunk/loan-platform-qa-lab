@@ -19,7 +19,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -59,9 +59,11 @@ class PaymentProcessorTest {
         ProcessingResult first = processor.process(payment("MPESA-1", 100));
         ProcessingResult second = processor.process(payment("MPESA-1", 100));
 
-        assertThat(first).isEqualTo(ProcessingResult.APPLIED);
-        assertThat(second).isEqualTo(ProcessingResult.DUPLICATE);
-        assertThat(loan.paid()).isEqualTo(100);
+        assertSoftly(softly -> {
+            softly.assertThat(first).isEqualTo(ProcessingResult.APPLIED);
+            softly.assertThat(second).isEqualTo(ProcessingResult.DUPLICATE);
+            softly.assertThat(loan.paid()).isEqualTo(100);
+        });
         verify(deviceLock, times(1)).unlock(anyString(), anyString());
     }
 
