@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Loan",
+  "type": "object",
+  "required": ["id", "deviceId", "price", "dailyRate", "paid", "balance", "credit", "status", "deviceState", "unlockedUntil"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^LN-" },
+    "deviceId": { "type": "string", "minLength": 1 },
+    "price": { "type": "integer", "minimum": 1 },
+    "dailyRate": { "type": "integer", "minimum": 1 },
+    "paid": { "type": "integer", "minimum": 0 },
+    "balance": { "type": "integer", "minimum": 0 },
+    "credit": { "type": "integer", "minimum": 0 },
+    "status": { "enum": ["ACTIVE", "PAID_OFF"] },
+    "deviceState": { "enum": ["LOCKED", "UNLOCKED", "RELEASED"] },
+    "unlockedUntil": { "type": ["string", "null"] }
+  }
+}
