@@ -19,12 +19,14 @@ import lab.loans.domain.UnlockDecision;
 import lab.loans.domain.UnlockPolicy;
 
 @Tag("unit")
+@DisplayName("UnlockPolicy: how a payment turns into unlocked days")
 class UnlockPolicyTest {
 
     private static final Instant NOW = Instant.parse("2026-09-15T09:00:00Z");
 
     private final UnlockPolicy policy = new UnlockPolicy();
 
+    @DisplayName("Every full daily rate buys one day, the rest stays as credit")
     @ParameterizedTest(name = "credit {0} + paid {1} KES at 100 KES/day -> {2} day(s), credit {3}")
     @CsvSource({
             " 0,   1, 0,  1",
@@ -37,8 +39,8 @@ class UnlockPolicyTest {
             "30,  50, 0, 80",
     })
     void everyFullDailyRateBuysOneDay(long credit, long amount, long expectedDays, long expectedCredit) {
-
         Loan loan = loanWithCredit(credit);
+
         UnlockDecision decision = policy.decide(loan, amount, NOW);
 
         assertSoftly(softly -> {
@@ -47,7 +49,8 @@ class UnlockPolicyTest {
         });
     }
 
-    @ParameterizedTest(name = "Paid {0} KES is rejected")
+    @DisplayName("Zero or negative amount is rejected")
+    @ParameterizedTest(name = "paid {0} KES -> rejected")
     @ValueSource(longs = { 0, -100 })
     void nonPositiveAmountIsRejected(long amount) {
         Loan loan = new Loan("LN-1", "350000000000001", 12_000, 100);
@@ -64,8 +67,10 @@ class UnlockPolicyTest {
 
         UnlockDecision decision = policy.decide(loan, 200, NOW);
 
-        assertThat(decision.action()).isEqualTo(UnlockDecision.Action.UNLOCK);
-        assertThat(decision.unlockedUntil()).isEqualTo(NOW.plus(Duration.ofDays(2)));
+        assertSoftly(softly -> {
+            softly.assertThat(decision.action()).isEqualTo(UnlockDecision.Action.UNLOCK);
+            softly.assertThat(decision.unlockedUntil()).isEqualTo(NOW.plus(Duration.ofDays(2)));
+        });
     }
 
     @Test
@@ -80,6 +85,7 @@ class UnlockPolicyTest {
         assertThat(decision.unlockedUntil()).isEqualTo(paidUntil.plus(Duration.ofDays(1)));
     }
 
+    @DisplayName("Payment that covers the price releases the phone")
     @ParameterizedTest(name = "price 300, paid {0} KES -> {1}")
     @CsvSource({
             "299, UNLOCK",
@@ -95,14 +101,18 @@ class UnlockPolicyTest {
     }
 
     @Test
+    @DisplayName("Less than a day's rate keeps the phone as it is")
     void lessThanOneDayKeepsThePhoneAsItIs() {
         UnlockDecision decision = policy.decide(loanWithCredit(0), 60, NOW);
 
-        assertThat(decision.action()).isEqualTo(UnlockDecision.Action.KEEP);
-        assertThat(decision.unlockedUntil()).isNull();
+        assertSoftly(softly -> {
+            softly.assertThat(decision.action()).isEqualTo(UnlockDecision.Action.KEEP);
+            softly.assertThat(decision.unlockedUntil()).isNull();
+        });
     }
 
     @Test
+    @DisplayName("Expired unlock counts new days from now, not from the old date")
     void expiredUnlockCountsNewDaysFromNow() {
         Loan loan = loanWithCredit(0);
         Instant expiredAt = NOW.minus(Duration.ofDays(3));

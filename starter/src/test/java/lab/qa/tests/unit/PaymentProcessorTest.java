@@ -1,5 +1,6 @@
 package lab.qa.tests.unit;
 
+import lab.loans.domain.DeviceState;
 import lab.loans.domain.Loan;
 import lab.loans.domain.LoanStatus;
 import lab.loans.events.PaymentReceived;
@@ -10,6 +11,7 @@ import lab.loans.service.UnknownLoanException;
 import lab.loans.store.InMemoryLoanRepository;
 import lab.loans.store.LoanRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +35,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 @Tag("unit")
+@DisplayName("PaymentProcessor: what a payment changes and what it asks of the partner")
 @ExtendWith(MockitoExtension.class)
 class PaymentProcessorTest {
 
@@ -53,6 +56,7 @@ class PaymentProcessorTest {
     }
 
     @Test
+    @DisplayName("Full-day payment unlocks the phone and schedules the relock")
     void fullDayPaymentUnlocksAndSchedulesTheRelock() {
         processor.process(payment("MPESA-1", 200));
 
@@ -62,6 +66,7 @@ class PaymentProcessorTest {
     }
 
     @Test
+    @DisplayName("Same payment id is applied only once")
     void samePaymentIdIsAppliedOnlyOnce() {
         ProcessingResult first = processor.process(payment("MPESA-1", 100));
         ProcessingResult second = processor.process(payment("MPESA-1", 100));
@@ -75,25 +80,34 @@ class PaymentProcessorTest {
     }
 
     @Test
+    @DisplayName("Partial payment keeps the credit and does not call the partner")
     void partialPaymentDoesNotCallThePartner() {
         ProcessingResult result = processor.process(payment("MPESA-1", 60));
 
-        assertThat(result).isEqualTo(ProcessingResult.APPLIED);
-        assertThat(loan.credit()).isEqualTo(60);
+        assertSoftly(softly -> {
+            softly.assertThat(result).isEqualTo(ProcessingResult.APPLIED);
+            softly.assertThat(loan.credit()).isEqualTo(60);
+        });
         verifyNoInteractions(deviceLock);
     }
 
     @Test
+    @DisplayName("Payment that covers the price releases the lock, with no unlock or relock")
     void paymentThatCoversThePriceReleasesTheLock() {
         processor.process(payment("MPESA-1", 1_000));
 
         verify(deviceLock).release(IMEI, "MPESA-1");
         verify(deviceLock, never()).unlock(anyString(), anyString());
         verify(deviceLock, never()).scheduleRelock(anyString(), any(), anyString());
-        assertThat(loan.status()).isEqualTo(LoanStatus.PAID_OFF);
+        assertSoftly(softly -> {
+            softly.assertThat(loan.status()).isEqualTo(LoanStatus.PAID_OFF);
+            softly.assertThat(loan.storedDeviceState()).isEqualTo(DeviceState.RELEASED);
+            softly.assertThat(loan.paid()).isEqualTo(1_000);
+        });
     }
 
     @Test
+    @DisplayName("Payment for an unknown loan fails without side effects")
     void paymentForUnknownLoanFailsWithoutSideEffects() {
         PaymentReceived unknown = new PaymentReceived("MPESA-9", "LN-missing", 100, NOW);
 

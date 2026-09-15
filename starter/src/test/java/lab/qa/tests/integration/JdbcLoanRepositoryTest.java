@@ -7,6 +7,7 @@ import lab.loans.domain.UnlockDecision;
 import lab.loans.store.JdbcLoanRepository;
 import lab.loans.store.ProcessedPayment;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.junit.jupiter.Container;
@@ -19,9 +20,11 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 /** The JDBC repository against a real Postgres in Docker: schema, round trip and the rules the database enforces. */
 @Tag("integration")
+@DisplayName("JdbcLoanRepository against a real Postgres")
 @Testcontainers
 class JdbcLoanRepositoryTest {
 
@@ -40,21 +43,25 @@ class JdbcLoanRepositoryTest {
     }
 
     @Test
+    @DisplayName("New loan is read back exactly as saved")
     void newLoanIsReadBackAsSaved() {
         Loan loan = repository.save(new Loan(newId(), "350000000000001", 12_000, 100));
 
         Loan stored = repository.findById(loan.id()).orElseThrow();
 
-        assertThat(stored.deviceId()).isEqualTo("350000000000001");
-        assertThat(stored.price()).isEqualTo(12_000);
-        assertThat(stored.dailyRate()).isEqualTo(100);
-        assertThat(stored.paid()).isZero();
-        assertThat(stored.status()).isEqualTo(LoanStatus.ACTIVE);
-        assertThat(stored.storedDeviceState()).isEqualTo(DeviceState.LOCKED);
-        assertThat(stored.unlockedUntil()).isNull();
+        assertSoftly(softly -> {
+            softly.assertThat(stored.deviceId()).isEqualTo("350000000000001");
+            softly.assertThat(stored.price()).isEqualTo(12_000);
+            softly.assertThat(stored.dailyRate()).isEqualTo(100);
+            softly.assertThat(stored.paid()).isZero();
+            softly.assertThat(stored.status()).isEqualTo(LoanStatus.ACTIVE);
+            softly.assertThat(stored.storedDeviceState()).isEqualTo(DeviceState.LOCKED);
+            softly.assertThat(stored.unlockedUntil()).isNull();
+        });
     }
 
     @Test
+    @DisplayName("Recorded payment stores the loan state and is remembered")
     void recordedPaymentStoresTheLoanStateAndIsRemembered() {
         Loan loan = repository.save(new Loan(newId(), "350000000000002", 12_000, 100));
         Instant paidUntil = NOW.plus(Duration.ofDays(1));
@@ -63,14 +70,17 @@ class JdbcLoanRepositoryTest {
         repository.recordPayment(loan, new ProcessedPayment("MPESA-" + loan.id(), loan.id(), 150, "APPLIED", NOW));
 
         Loan stored = repository.findById(loan.id()).orElseThrow();
-        assertThat(stored.paid()).isEqualTo(150);
-        assertThat(stored.credit()).isEqualTo(50);
-        assertThat(stored.storedDeviceState()).isEqualTo(DeviceState.UNLOCKED);
-        assertThat(stored.unlockedUntil()).isEqualTo(paidUntil);
-        assertThat(repository.isPaymentProcessed("MPESA-" + loan.id())).isTrue();
+        assertSoftly(softly -> {
+            softly.assertThat(stored.paid()).isEqualTo(150);
+            softly.assertThat(stored.credit()).isEqualTo(50);
+            softly.assertThat(stored.storedDeviceState()).isEqualTo(DeviceState.UNLOCKED);
+            softly.assertThat(stored.unlockedUntil()).isEqualTo(paidUntil);
+            softly.assertThat(repository.isPaymentProcessed("MPESA-" + loan.id())).isTrue();
+        });
     }
 
     @Test
+    @DisplayName("Recording the same payment twice is not an error")
     void samePaymentRecordedTwiceIsNotAnError() {
         Loan loan = repository.save(new Loan(newId(), "350000000000003", 12_000, 100));
         ProcessedPayment payment = new ProcessedPayment("MPESA-" + loan.id(), loan.id(), 50, "APPLIED", NOW);
@@ -82,12 +92,16 @@ class JdbcLoanRepositoryTest {
     }
 
     @Test
+    @DisplayName("Unknown loan and unknown payment are not found")
     void unknownLoanAndPaymentAreNotFound() {
-        assertThat(repository.findById("LN-missing")).isEmpty();
-        assertThat(repository.isPaymentProcessed("MPESA-missing")).isFalse();
+        assertSoftly(softly -> {
+            softly.assertThat(repository.findById("LN-missing")).isEmpty();
+            softly.assertThat(repository.isPaymentProcessed("MPESA-missing")).isFalse();
+        });
     }
 
     @Test
+    @DisplayName("Database rejects a paid-off loan whose phone is still locked")
     void databaseRejectsAPaidOffLoanWithALockedPhone() {
         Loan broken = Loan.restore(newId(), "350000000000004", 300, 100, 300, 0,
                 LoanStatus.PAID_OFF, DeviceState.LOCKED, null);
@@ -98,6 +112,7 @@ class JdbcLoanRepositoryTest {
     }
 
     @Test
+    @DisplayName("Render-style postgresql:// URL is understood")
     void renderStyleDatabaseUrlIsUnderstood() {
         String url = "postgresql://" + POSTGRES.getUsername() + ":" + POSTGRES.getPassword()
                 + "@" + POSTGRES.getHost() + ":" + POSTGRES.getFirstMappedPort() + "/" + POSTGRES.getDatabaseName();
