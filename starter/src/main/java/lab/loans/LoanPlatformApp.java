@@ -26,13 +26,18 @@ public final class LoanPlatformApp implements AutoCloseable {
     }
 
     public static LoanPlatformApp start(int port, DeviceLockClient deviceLock, Clock clock) throws IOException {
+        return start("127.0.0.1", port, deviceLock, clock);
+    }
+
+    public static LoanPlatformApp start(String host, int port, DeviceLockClient deviceLock, Clock clock)
+            throws IOException {
         LoanRepository loans = new LoanRepository();
         InMemoryEventBus bus = new InMemoryEventBus();
         PaymentProcessor processor = new PaymentProcessor(loans, deviceLock, clock);
         bus.subscribe(PaymentProcessor.TOPIC, processor::handle);
 
         HttpApi api = new HttpApi(loans, bus, clock);
-        int actualPort = api.start(port);
+        int actualPort = api.start(host, port);
         return new LoanPlatformApp(api, bus, actualPort);
     }
 
@@ -50,14 +55,26 @@ public final class LoanPlatformApp implements AutoCloseable {
         bus.close();
     }
 
-    /** Local run: mvn compile exec:java, or Run in the IDE. -Dknox.url=... sends real HTTP to a stub. */
+    /**
+     * Local run: Run in the IDE. In a container the BIND_HOST and PORT environment variables
+     * (Render sets PORT) win over -Dhost and -Dport. -Dknox.url=... sends real HTTP to a stub.
+     */
     public static void main(String[] args) throws IOException {
-        int port = Integer.parseInt(System.getProperty("port", "8080"));
+        String host = setting("BIND_HOST", "host", "127.0.0.1");
+        int port = Integer.parseInt(setting("PORT", "port", "8080"));
         String knoxUrl = System.getProperty("knox.url");
         DeviceLockClient deviceLock = knoxUrl == null
                 ? new LoggingDeviceLockClient()
                 : new HttpDeviceLockClient(knoxUrl);
-        LoanPlatformApp app = start(port, deviceLock, Clock.systemUTC());
-        System.out.println("Loan platform is listening on " + app.baseUrl());
+        LoanPlatformApp app = start(host, port, deviceLock, Clock.systemUTC());
+        System.out.println("Loan platform is listening on http://" + host + ":" + app.port);
+    }
+
+    private static String setting(String envName, String propertyName, String fallback) {
+        String fromEnv = System.getenv(envName);
+        if (fromEnv != null && !fromEnv.isBlank()) {
+            return fromEnv;
+        }
+        return System.getProperty(propertyName, fallback);
     }
 }

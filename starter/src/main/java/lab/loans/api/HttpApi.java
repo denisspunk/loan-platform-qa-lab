@@ -45,9 +45,14 @@ public class HttpApi {
         this.clock = clock;
     }
 
-    /** Starts the server; port 0 picks a free port. Returns the actual port. */
+    /** Starts the server on 127.0.0.1; port 0 picks a free port. Returns the actual port. */
     public int start(int port) throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+        return start("127.0.0.1", port);
+    }
+
+    /** Starts the server on the given host, e.g. 0.0.0.0 inside a container. Returns the actual port. */
+    public int start(String host, int port) throws IOException {
+        server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.createContext("/loans", exchange -> handle(exchange, this::routeLoans));
         server.createContext("/payments", exchange -> handle(exchange, this::routePayments));
         server.setExecutor(executor);
