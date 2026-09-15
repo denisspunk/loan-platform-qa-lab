@@ -11,6 +11,12 @@ public final class Config {
     /** How long to wait for asynchronous processing before a test fails. */
     public static final Duration ASYNC_TIMEOUT = Duration.ofSeconds(Long.getLong("lab.asyncTimeoutSeconds", 5));
 
+    /** Address of a deployed stand for smoke and remote tests, e.g. https://loan-platform-qa-lab.onrender.com. */
+    public static final String BASE_URL = System.getProperty("lab.baseUrl", "");
+
+    /** How long to wait for a sleeping free-tier stand to wake up before the first remote test. */
+    public static final Duration WAKE_UP_TIMEOUT = Duration.ofSeconds(Long.getLong("lab.wakeUpSeconds", 120));
+
     private Config() {
     }
 }

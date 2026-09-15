@@ -46,6 +46,16 @@ tools/db.sh sql "SELECT count(*) FROM loans"  # любой запрос
 tools/db.sh psql                              # интерактивный psql
 ```
 
+Тесты против развёрнутого стенда (в обычный `mvn test` не входят):
+
+```bash
+cd starter
+mvn test -Dgroups=smoke -DexcludedGroups= -Dlab.baseUrl=https://loan-platform-qa-lab.onrender.com -Dlab.asyncTimeoutSeconds=30
+mvn test -Dgroups="smoke | remote" -DexcludedGroups= -Dlab.baseUrl=https://loan-platform-qa-lab.onrender.com -Dlab.asyncTimeoutSeconds=30
+```
+
+В GitHub: Actions → `stand-tests` → Run workflow, указать адрес стенда.
+
 ## Слои каркаса (`src/test/java/lab/qa`)
 
 | Пакет | Что внутри |
