@@ -12,6 +12,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import static io.restassured.module.jsv.JsonSchemaValidator.matchesJsonSchemaInClasspath;
 import static lab.qa.data.TestData.aLoan;
 import static lab.qa.data.TestData.uniquePaymentId;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 
 /**
@@ -57,6 +58,32 @@ class LoanApiSchemaTest extends BaseIT {
         loansApi.postPayment(new PaymentRequest(uniquePaymentId(), loan.id(), 100))
                 .then().statusCode(202)
                 .body(matchesJsonSchemaInClasspath("schemas/payment-accepted.json"));
+    }
+
+    @Test
+    @DisplayName("Loans list matches the loan-list schema")
+    void loansListMatchesItsSchema() {
+        LoanJson loan = loanSteps.openLoan(aLoan().price(300).dailyRate(100));
+        paymentSteps.pay(loan, 100);
+
+        loansApi.listLoans(5)
+                .then().statusCode(200)
+                .body(matchesJsonSchemaInClasspath("schemas/loan-list.json"));
+    }
+
+    @Test
+    @DisplayName("Payment history with both results matches the payment-history schema")
+    void paymentHistoryMatchesItsSchema() {
+        LoanJson loan = loanSteps.openLoan(aLoan().price(300).dailyRate(100));
+        paymentSteps.pay(loan, 300);
+        loansApi.postPayment(new PaymentRequest(uniquePaymentId(), loan.id(), 100))
+                .then().statusCode(202);
+        paymentSteps.waitForQueuedPayments();
+
+        loansApi.getPayments(loan.id())
+                .then().statusCode(200)
+                .body("payments.result", contains("APPLIED", "LOAN_ALREADY_PAID_OFF"))
+                .body(matchesJsonSchemaInClasspath("schemas/payment-history.json"));
     }
 
     @Test

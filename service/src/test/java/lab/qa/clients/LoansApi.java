@@ -30,6 +30,24 @@ public class LoansApi {
         return given(spec).when().get("/loans/{id}", loanId);
     }
 
+    public Response listLoans() {
+        return given(spec).when().get("/loans");
+    }
+
+    /** limit is an Object so tests can also send what is not a number. */
+    public Response listLoans(Object limit) {
+        return given(spec).queryParam("limit", limit).when().get("/loans");
+    }
+
+    public Response getPayments(String loanId) {
+        return given(spec).when().get("/loans/{id}/payments", loanId);
+    }
+
+    /** The web UI served at the root. */
+    public Response homePage() {
+        return given(spec).when().get("/");
+    }
+
     public Response postPayment(PaymentRequest payment) {
         return given(spec).body(payment).when().post("/payments");
     }

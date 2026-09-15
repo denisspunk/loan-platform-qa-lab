@@ -19,6 +19,8 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -42,6 +44,20 @@ public class JdbcLoanRepository implements LoanRepository {
             SELECT id, device_id, price, daily_rate, paid, credit, status, device_state, unlocked_until
             FROM loans
             WHERE id = ?
+            """;
+
+    private static final String SELECT_RECENT_LOANS = """
+            SELECT id, device_id, price, daily_rate, paid, credit, status, device_state, unlocked_until
+            FROM loans
+            ORDER BY created_at DESC, id
+            LIMIT ?
+            """;
+
+    private static final String SELECT_PAYMENTS = """
+            SELECT payment_id, loan_id, amount, result, processed_at
+            FROM processed_payments
+            WHERE loan_id = ?
+            ORDER BY processed_at, payment_id
             """;
 
     private static final String INSERT_PAYMENT = """
@@ -114,23 +130,27 @@ public class JdbcLoanRepository implements LoanRepository {
         try (Connection connection = connect(); PreparedStatement select = connection.prepareStatement(SELECT_LOAN)) {
             select.setString(1, id);
             try (ResultSet row = select.executeQuery()) {
-                if (!row.next()) {
-                    return Optional.empty();
-                }
-                OffsetDateTime unlockedUntil = row.getObject("unlocked_until", OffsetDateTime.class);
-                return Optional.of(Loan.restore(
-                        row.getString("id"),
-                        row.getString("device_id"),
-                        row.getLong("price"),
-                        row.getLong("daily_rate"),
-                        row.getLong("paid"),
-                        row.getLong("credit"),
-                        LoanStatus.valueOf(row.getString("status")),
-                        DeviceState.valueOf(row.getString("device_state")),
-                        unlockedUntil == null ? null : unlockedUntil.toInstant()));
+                return row.next() ? Optional.of(toLoan(row)) : Optional.empty();
             }
         } catch (SQLException e) {
             throw failure("find loan " + id, e);
+        }
+    }
+
+    @Override
+    public List<Loan> findRecent(int limit) {
+        try (Connection connection = connect();
+             PreparedStatement select = connection.prepareStatement(SELECT_RECENT_LOANS)) {
+            select.setInt(1, limit);
+            try (ResultSet row = select.executeQuery()) {
+                List<Loan> recent = new ArrayList<>();
+                while (row.next()) {
+                    recent.add(toLoan(row));
+                }
+                return recent;
+            }
+        } catch (SQLException e) {
+            throw failure("list recent loans", e);
         }
     }
 
@@ -170,6 +190,41 @@ public class JdbcLoanRepository implements LoanRepository {
         } catch (SQLException e) {
             throw failure("record payment " + payment.paymentId(), e);
         }
+    }
+
+    @Override
+    public List<ProcessedPayment> findPayments(String loanId) {
+        try (Connection connection = connect(); PreparedStatement select = connection.prepareStatement(SELECT_PAYMENTS)) {
+            select.setString(1, loanId);
+            try (ResultSet row = select.executeQuery()) {
+                List<ProcessedPayment> payments = new ArrayList<>();
+                while (row.next()) {
+                    payments.add(new ProcessedPayment(
+                            row.getString("payment_id"),
+                            row.getString("loan_id"),
+                            row.getLong("amount"),
+                            row.getString("result"),
+                            row.getObject("processed_at", OffsetDateTime.class).toInstant()));
+                }
+                return payments;
+            }
+        } catch (SQLException e) {
+            throw failure("list payments of loan " + loanId, e);
+        }
+    }
+
+    private static Loan toLoan(ResultSet row) throws SQLException {
+        OffsetDateTime unlockedUntil = row.getObject("unlocked_until", OffsetDateTime.class);
+        return Loan.restore(
+                row.getString("id"),
+                row.getString("device_id"),
+                row.getLong("price"),
+                row.getLong("daily_rate"),
+                row.getLong("paid"),
+                row.getLong("credit"),
+                LoanStatus.valueOf(row.getString("status")),
+                DeviceState.valueOf(row.getString("device_state")),
+                unlockedUntil == null ? null : unlockedUntil.toInstant());
     }
 
     private void upsert(Connection connection, Loan loan) throws SQLException {

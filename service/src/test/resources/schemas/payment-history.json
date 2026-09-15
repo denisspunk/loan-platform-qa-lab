@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Payment history",
+  "type": "object",
+  "required": ["loanId", "payments"],
+  "properties": {
+    "loanId": { "type": "string", "pattern": "^LN-" },
+    "payments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["paymentId", "amount", "result", "processedAt"],
+        "properties": {
+          "paymentId": { "type": "string", "minLength": 1 },
+          "amount": { "type": "integer", "minimum": 1 },
+          "result": { "enum": ["APPLIED", "LOAN_ALREADY_PAID_OFF"] },
+          "processedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

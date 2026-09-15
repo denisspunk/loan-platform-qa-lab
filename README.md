@@ -1,6 +1,6 @@
 # Loan Platform QA Lab
 
-A backend for phone loans and the strategy for testing it: from unit tests to quality gates on the way through dev, stage and prod.
+A backend for phone loans, a small web UI on top of it, and the strategy for testing both: from unit tests to quality gates on the way through dev, stage and prod.
 
 A customer takes a phone on credit. Every payment buys days, and while there are days left the phone stays unlocked. When they run out, the device-lock partner (a simplified stand-in for Samsung Knox) locks it again. Once the full price is paid, the lock is removed for good.
 
@@ -8,7 +8,8 @@ A customer takes a phone on credit. Every payment buys days, and while there are
 
 ```mermaid
 flowchart LR
-    Client -->|POST /loans, GET /loans/id| API[HTTP API]
+    UI[Web UI at /] -->|loans, payments, history| API[HTTP API]
+    Client -->|POST /loans, GET /loans| API
     PSP[Payment provider] -->|POST /payments| API
     API -->|PaymentReceived| Bus[Event bus<br/>3 attempts, dead letters]
     Bus --> Processor[PaymentProcessor]
@@ -24,6 +25,20 @@ Business rules:
 - When the whole price is paid, the loan is `PAID_OFF` and the phone is `RELEASED`.
 - A payment redelivered with the same `paymentId` is not applied twice.
 
+API:
+
+| Method and path | Answer |
+|---|---|
+| `POST /loans` `{"deviceId","price","dailyRate"}` | `201` loan |
+| `GET /loans?limit=N` | `200` `{"loans":[...]}`, newest first; limit 1–100, default 20 |
+| `GET /loans/{id}` | `200` loan with `paid`, `balance`, `credit`, `status`, `deviceState`, `unlockedUntil` |
+| `GET /loans/{id}/payments` | `200` `{"loanId","payments":[...]}` with `APPLIED` or `LOAN_ALREADY_PAID_OFF` |
+| `POST /payments` `{"paymentId","loanId","amount"}` | `202` accepted, applied asynchronously |
+| `GET /health` | `200` `{"status":"UP"}` |
+| `GET /` | the web UI |
+
+Errors are JSON: `{"error": "..."}` with `400` or `404`.
+
 Stack: Java 21, the JDK's built-in HTTP server, Jackson, plain JDBC and Postgres 17 (without `DATABASE_URL` the service keeps data in memory).
 
 ## Test pyramid
@@ -32,13 +47,13 @@ Stack: Java 21, the JDK's built-in HTTP server, Jackson, plain JDBC and Postgres
 |---|---|---|---|---|
 | unit | unlock rules, the loan, the payment processor | JUnit 5, AssertJ, Mockito | 35 | every PR |
 | component | event bus and processor together, fake partner | Awaitility | 5 | every PR |
-| contract | what is sent to the partner; API responses against JSON schemas | WireMock, json-schema-validator | 16 | every PR |
-| integration | the running service over HTTP; the repository on a real Postgres | RestAssured, WireMock, Testcontainers | 43 | every PR |
+| contract | what is sent to the partner; API responses against JSON schemas | WireMock, json-schema-validator | 18 | every PR |
+| integration | the running service over HTTP, including the web UI page; the repository on a real Postgres | RestAssured, WireMock, Testcontainers | 59 | every PR |
 | e2e | a customer's journey over several days of test clock | all of the above | 3 | every PR |
-| smoke | the stand is up, a loan is created, a payment goes through | RestAssured | 3 | after each deploy |
-| remote | API regression on a deployed stand | RestAssured | 13 | dev and stage |
+| smoke | the stand is up, the web UI is served, a loan is created, a payment goes through | RestAssured | 4 | after each deploy |
+| remote | API regression on a deployed stand, including list and history | RestAssured | 15 | dev and stage |
 
-`mvn test` runs the first five levels: 102 tests, 4 of them `@Disabled` tests of known bugs (see below).
+`mvn test` runs the first five levels: 120 tests, 3 of them `@Disabled` tests of known bugs (see below).
 
 ### Test framework (`service/src/test/java/lab/qa`)
 
@@ -56,6 +71,15 @@ Principles:
 - Several checks of one result use soft assertions, so a failed test shows the whole picture.
 - A known bug is pinned twice: a passing test of today's behaviour with `(F-xx)` in its name, and a `@Disabled("F-xx: …")` test of the expected one. When the bug is fixed, the first goes red and the second is enabled.
 
+## Web UI
+
+Open any stand in a browser, for example https://loan-platform-qa-lab.onrender.com. One page, plain HTML and JavaScript served by the service itself, no build step:
+- open a loan and see it in the list of recent loans;
+- pay any amount, use quick amounts (1 day, 3 days, half a day, pay off), or reuse the last payment id to show that a duplicate is ignored;
+- watch the phone state, credit, balance and relock time change, and the payment history fill with `APPLIED` or `LOAN_ALREADY_PAID_OFF`.
+
+A link with `#LN-…` opens that loan directly. The UI uses only the public API, so everything it shows is covered by the API tests.
+
 ## Fault injection
 
 The service has four seeded bugs, off by default: `mvn test -Dlab.bugs=<bug>`. Each number is how many tests of that level go red (run on 2026-09-15).
@@ -71,7 +95,7 @@ No bug goes unnoticed, and the table shows which level catches each one earliest
 
 ## Findings
 
-[BUGS.md](BUGS.md): 12 findings from exploratory testing (F-01…F-12) with steps, evidence and status. For example, a payment to a paid-off loan is accepted and the money disappears (F-01); a partner failure between unlock and relock leaves the phone unlocked for good (F-04).
+[BUGS.md](BUGS.md): 12 findings from exploratory testing (F-01…F-12) with steps, evidence and status. For example, a payment to a paid-off loan is accepted and the money disappears (F-01); a partner failure between unlock and relock leaves the phone unlocked for good (F-04). F-10 (HTML 404 outside the API) was fixed together with the web UI, and its disabled test was switched on.
 
 ## CI/CD and quality gates
 
@@ -114,7 +138,7 @@ mvn test -Dlab.bugs=KNOX_EPOCH_DATE           # turn on a seeded bug
 mvn test -Dgroups="smoke | remote" -DexcludedGroups= -Dlab.baseUrl=https://loan-platform-qa-lab.onrender.com -Dlab.asyncTimeoutSeconds=30
 ```
 
-The service locally: `docker build -t loans service && docker run -p 8080:8080 loans`, then `curl localhost:8080/health`.
+The service locally: `docker build -t loans service && docker run -p 8080:8080 loans`, then open http://localhost:8080 for the UI or `curl localhost:8080/health`.
 
 ## Tools
 

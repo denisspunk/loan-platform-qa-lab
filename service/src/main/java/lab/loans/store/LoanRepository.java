@@ -2,6 +2,7 @@ package lab.loans.store;
 
 import lab.loans.domain.Loan;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -14,8 +15,14 @@ public interface LoanRepository {
 
     Optional<Loan> findById(String id);
 
+    /** The most recently opened loans, newest first. */
+    List<Loan> findRecent(int limit);
+
     boolean isPaymentProcessed(String paymentId);
 
     /** Stores the loan state after a payment and remembers the payment as one step: both or neither. */
     void recordPayment(Loan loan, ProcessedPayment payment);
+
+    /** Payments recorded for the loan, in the order they were processed. Duplicates are never recorded. */
+    List<ProcessedPayment> findPayments(String loanId);
 }
