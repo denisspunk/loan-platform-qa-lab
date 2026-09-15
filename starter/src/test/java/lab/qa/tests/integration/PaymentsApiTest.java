@@ -1,9 +1,11 @@
 package lab.qa.tests.integration;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
-import io.restassured.http.ContentType;
 import lab.loans.LoanPlatformApp;
 import lab.loans.knox.HttpDeviceLockClient;
+import lab.qa.clients.LoanRequest;
+import lab.qa.clients.LoansApi;
+import lab.qa.clients.PaymentRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -22,7 +24,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
-import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.equalTo;
@@ -35,6 +36,7 @@ class PaymentsApiTest {
 
     private static WireMockServer knox;
     private static LoanPlatformApp app;
+    private static LoansApi loansApi;
 
     @BeforeAll
     static void startPartnerStubAndService() throws IOException {
@@ -43,6 +45,7 @@ class PaymentsApiTest {
         knox.stubFor(post(urlPathMatching("/devices/.*")).willReturn(ok()));
 
         app = LoanPlatformApp.start(0, new HttpDeviceLockClient(knox.baseUrl()), Clock.fixed(NOW, ZoneOffset.UTC));
+        loansApi = new LoansApi(app.baseUrl());
     }
 
     @AfterAll
@@ -54,22 +57,17 @@ class PaymentsApiTest {
     @Test
     @DisplayName("Accepted payment unlocks the phone through the partner")
     void acceptedPaymentUnlocksThePhoneThroughThePartner() {
-        String loanId = given().baseUri(app.baseUrl()).contentType(ContentType.JSON)
-                .body("{\"deviceId\": \"350000000000501\", \"price\": 12000, \"dailyRate\": 100}")
-                .when().post("/loans")
+        String loanId = loansApi.createLoan(new LoanRequest("350000000000501", 12_000, 100))
                 .then().statusCode(201)
                 .extract().path("id");
 
-        given().baseUri(app.baseUrl()).contentType(ContentType.JSON)
-                .body("{\"paymentId\": \"MPESA-501\", \"loanId\": \"" + loanId + "\", \"amount\": 300}")
-                .when().post("/payments")
+        loansApi.postPayment(new PaymentRequest("MPESA-501", loanId, 300))
                 .then().statusCode(202);
 
         // 300 KES at 100 KES/day buys 3 days, counted from the fixed clock of this test
         String expectedUntil = NOW.plus(Duration.ofDays(3)).toString();
 
-        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> given().baseUri(app.baseUrl())
-                .when().get("/loans/{id}", loanId)
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> loansApi.getLoan(loanId)
                 .then().statusCode(200)
                 .body("deviceState", equalTo("UNLOCKED"))
                 .body("unlockedUntil", equalTo(expectedUntil)));
