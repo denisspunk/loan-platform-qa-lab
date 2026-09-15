@@ -1,0 +1,131 @@
+# Delivery of the starter service: one commit, chosen once, promoted dev -> stage -> prod through quality gates.
+#   gate 0: starter-pyramid is green on main (this workflow starts only after that)
+#   gate 1: smoke and remote API regression on dev
+#   gate 2: smoke and remote API regression on stage
+#   approval: the prod environment waits for a reviewer
+#   gate 3: smoke on prod; if it fails, prod goes back to the commit it ran before
+name: delivery
+
+on:
+  workflow_run:
+    workflows: [starter-pyramid]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Full SHA of a commit on main to deliver
+        required: true
+
+# one delivery at a time; a newer one waits instead of cancelling a deploy halfway
+concurrency:
+  group: delivery
+  cancel-in-progress: false
+
+jobs:
+  select-commit:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.commit.outputs.sha }}
+    steps:
+      - id: commit
+        env:
+          FROM_PYRAMID: ${{ github.event.workflow_run.head_sha }}
+          FROM_INPUT: ${{ inputs.commit }}
+        run: |
+          sha="${FROM_INPUT:-$FROM_PYRAMID}"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a full commit SHA: $sha"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Delivering commit \`$sha\`" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-dev:
+    needs: select-commit
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: ${{ vars.STAND_URL_DEV }}
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE: ${{ vars.RENDER_SERVICE_DEV }}
+          COMMIT: ${{ needs.select-commit.outputs.commit }}
+        run: tools/render.sh deploy "$SERVICE" "$COMMIT"
+
+  gate-1-dev:
+    needs: [select-commit, deploy-dev]
+    uses: ./.github/workflows/stand-tests.yml
+    with:
+      base_url: ${{ vars.STAND_URL_DEV }}
+      groups: smoke | remote
+      ref: ${{ needs.select-commit.outputs.commit }}
+
+  deploy-stage:
+    needs: [select-commit, gate-1-dev]
+    runs-on: ubuntu-latest
+    environment:
+      name: stage
+      url: ${{ vars.STAND_URL_STAGE }}
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE: ${{ vars.RENDER_SERVICE_STAGE }}
+          COMMIT: ${{ needs.select-commit.outputs.commit }}
+        run: tools/render.sh deploy "$SERVICE" "$COMMIT"
+
+  gate-2-stage:
+    needs: [select-commit, deploy-stage]
+    uses: ./.github/workflows/stand-tests.yml
+    with:
+      base_url: ${{ vars.STAND_URL_STAGE }}
+      groups: smoke | remote
+      ref: ${{ needs.select-commit.outputs.commit }}
+
+  deploy-prod:
+    needs: [select-commit, gate-2-stage]
+    runs-on: ubuntu-latest
+    # the prod environment has a required reviewer: the job waits here until someone approves
+    environment:
+      name: prod
+      url: ${{ vars.STAND_URL_PROD }}
+    outputs:
+      previous: ${{ steps.previous.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: previous
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE: ${{ vars.RENDER_SERVICE_PROD }}
+        run: echo "commit=$(tools/render.sh live-commit "$SERVICE")" >> "$GITHUB_OUTPUT"
+      - env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE: ${{ vars.RENDER_SERVICE_PROD }}
+          COMMIT: ${{ needs.select-commit.outputs.commit }}
+        run: tools/render.sh deploy "$SERVICE" "$COMMIT"
+
+  gate-3-prod:
+    needs: [select-commit, deploy-prod]
+    uses: ./.github/workflows/stand-tests.yml
+    with:
+      base_url: ${{ vars.STAND_URL_PROD }}
+      groups: smoke
+      ref: ${{ needs.select-commit.outputs.commit }}
+
+  # no environment here on purpose: a rollback must not wait for another approval
+  rollback-prod:
+    needs: [deploy-prod, gate-3-prod]
+    if: failure() && needs.deploy-prod.result == 'success' && needs.deploy-prod.outputs.previous != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE: ${{ vars.RENDER_SERVICE_PROD }}
+          COMMIT: ${{ needs.deploy-prod.outputs.previous }}
+        run: |
+          echo "::warning::gate 3 failed on prod, rolling back to $COMMIT"
+          tools/render.sh deploy "$SERVICE" "$COMMIT"

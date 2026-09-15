@@ -1,5 +1,5 @@
 # Tests against a deployed stand: smoke (quick, first check after a deploy) and remote (API regression over HTTP).
-# Run by hand from the Actions tab, or call it from a deploy workflow after the deploy is live.
+# Run by hand from the Actions tab, or called by the delivery pipeline after a deploy is live.
 name: stand-tests
 
 on:
@@ -18,6 +18,10 @@ on:
           - smoke
           - remote
           - smoke | remote
+      ref:
+        description: Commit or branch whose tests to run (empty = the branch this run starts from)
+        required: false
+        default: ""
   workflow_call:
     inputs:
       base_url:
@@ -27,6 +31,11 @@ on:
         required: false
         type: string
         default: smoke | remote
+      ref:
+        description: Run the tests of the commit that was deployed
+        required: false
+        type: string
+        default: ""
 
 defaults:
   run:
@@ -37,6 +46,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21", cache: maven }
       # inputs go through environment variables, so nothing typed into the form is pasted into the script
