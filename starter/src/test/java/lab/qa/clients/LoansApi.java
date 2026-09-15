@@ -33,4 +33,23 @@ public class LoansApi {
     public Response postPayment(PaymentRequest payment) {
         return given(spec).body(payment).when().post("/payments");
     }
+
+    public Response health() {
+        return given(spec).when().get("/health");
+    }
+
+    /** Sends the body as is, for tests of incomplete or malformed JSON that a record cannot express. */
+    public Response postLoanBody(String rawBody) {
+        return given(spec).body(rawBody).when().post("/loans");
+    }
+
+    /** Sends the body as is, for tests of incomplete or malformed JSON that a record cannot express. */
+    public Response postPaymentBody(String rawBody) {
+        return given(spec).body(rawBody).when().post("/payments");
+    }
+
+    /** Any method on any path, for routing tests: requests the service must refuse. */
+    public Response request(String method, String path) {
+        return given(spec).when().request(method, path);
+    }
 }

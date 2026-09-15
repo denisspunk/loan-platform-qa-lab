@@ -7,6 +7,7 @@ import lab.qa.core.Config;
 
 import java.time.Duration;
 
+import static lab.qa.data.TestData.aLoan;
 import static lab.qa.data.TestData.uniquePaymentId;
 import static org.awaitility.Awaitility.await;
 
@@ -35,6 +36,31 @@ public class PaymentSteps {
         long paidBefore = loanSteps.current(loan).paid();
         send(loan, paymentId, amount);
         return waitUntilPaidAtLeast(loan, paidBefore + amount);
+    }
+
+    /**
+     * At-least-once delivery: the same callback arrives twice.
+     * A 1 KES marker payment goes right after both copies; once the marker is applied,
+     * both copies have been processed too, and only then is a balance check honest.
+     */
+    public LoanJson payTwiceWithSameId(LoanJson loan, long amount) {
+        long paidBefore = loanSteps.current(loan).paid();
+        String paymentId = uniquePaymentId();
+        send(loan, paymentId, amount);
+        send(loan, paymentId, amount);
+        send(loan, uniquePaymentId(), 1);
+        return waitUntilPaidAtLeast(loan, paidBefore + amount + 1);
+    }
+
+    /**
+     * Waits until every payment sent so far has been processed, including payments that change nothing
+     * on their loan: a paid-off loan, a failing partner. The in-memory event bus handles events one at a time
+     * and in order, so a 1 KES payment to a fresh marker loan is applied only after all of them.
+     * If the bus ever processes events in parallel, this step stops being a guarantee.
+     */
+    public void waitForQueuedPayments() {
+        LoanJson marker = loanSteps.openLoan(aLoan());
+        pay(marker, 1);
     }
 
     private void send(LoanJson loan, String paymentId, long amount) {
