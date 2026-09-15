@@ -16,3 +16,6 @@ target/
 # Local secrets
 .env
 *.local
+
+# local planning notes
+ROADMAP.md
