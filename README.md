@@ -33,17 +33,18 @@ mvn test -Dlab.bugs=KNOX_EPOCH_DATE           # включить засеянн�
 
 - Сервис из `starter/` развёрнут на Render: https://loan-platform-qa-lab.onrender.com (`GET /health`). Деплой идёт после зелёного CI.
 - С `DATABASE_URL` сервис хранит займы и обработанные платежи в Postgres, без неё — в памяти.
-- Бесплатная база Render удаляется 15.10.2026.
+- Базы окружений dev, stage и prod — отдельные проекты Neon во Франкфурте, Postgres 17.
+- Ключи, id сервисов и строки подключения лежат в `.env` в корне (в git не попадает, репозиторий публичный). Список переменных — в `.env.example`.
 
-Смотреть базу — `tools/db.sh`: psql из Docker, только чтение.
+Смотреть базу — `tools/db.sh`: psql из Docker, только чтение, строка подключения берётся из `.env`.
 
 ```bash
-export RENDER_API_KEY=rnd_...                 # база на Render; или DATABASE_URL=postgresql://... для своей
-tools/db.sh tables                            # таблицы и число строк
-tools/db.sh loans 10                          # займы, сначала с последними платежами
-tools/db.sh payments LN-6954bb4f              # платежи по займу: APPLIED, LOAN_ALREADY_PAID_OFF
-tools/db.sh sql "SELECT count(*) FROM loans"  # любой запрос
-tools/db.sh psql                              # интерактивный psql
+tools/db.sh --env dev tables                            # таблицы и число строк
+tools/db.sh --env dev loans 10                          # займы, сначала с последними платежами
+tools/db.sh --env dev payments LN-6954bb4f              # платежи по займу: APPLIED, LOAN_ALREADY_PAID_OFF
+tools/db.sh --env stage sql "SELECT count(*) FROM loans"  # любой запрос
+tools/db.sh --env prod psql                             # интерактивный psql
+DATABASE_URL=postgresql://... tools/db.sh tables        # любая другая база, например локальная
 ```
 
 Тесты против развёрнутого стенда (в обычный `mvn test` не входят):

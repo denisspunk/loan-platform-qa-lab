@@ -1,47 +1,50 @@
 #!/usr/bin/env bash
 # Look into the loan service database with psql from Docker: nothing to install, read-only by default.
 #
-#   tools/db.sh tables               tables and their row counts
-#   tools/db.sh loans [N]            N loans, most recently paid first (default 20)
-#   tools/db.sh payments [LOAN_ID]   processed payments, all or for one loan, newest first
-#   tools/db.sh sql "SELECT ..."     any query
-#   tools/db.sh psql                 interactive psql session
+#   tools/db.sh [--env dev|stage|prod] tables               tables and their row counts
+#   tools/db.sh [--env dev|stage|prod] loans [N]            N loans, most recently paid first (default 20)
+#   tools/db.sh [--env dev|stage|prod] payments [LOAN_ID]   processed payments, all or for one loan, newest first
+#   tools/db.sh [--env dev|stage|prod] sql "SELECT ..."     any query
+#   tools/db.sh [--env dev|stage|prod] psql                 interactive psql session
 #
 # Which database:
-#   DATABASE_URL=postgresql://user:password@host:port/db   the one you name, e.g. local Postgres in Docker
-#   RENDER_API_KEY=rnd_...                                  otherwise the Render database of this lab;
-#                                                           the connection string is fetched on every run
-#   RENDER_POSTGRES_ID=dpg-...                              a different Render database
+#   --env dev|stage|prod     the Neon database of that environment: DATABASE_URL_DEV and so on, read from .env
+#   DATABASE_URL=postgresql://user:password@host:port/db    otherwise the one you name, e.g. local Postgres in Docker
 #
 # Every session runs with default_transaction_read_only=on, so a stray UPDATE fails instead of changing data.
 set -euo pipefail
 
 POSTGRES_IMAGE="postgres:17-alpine"
-RENDER_POSTGRES_ID="${RENDER_POSTGRES_ID:-dpg-dakje7uk1f9s73dh8vt0-a}"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 usage() {
-    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
+if [[ "${1:-}" == "--env" ]]; then
+    env_name="${2:-}"
+    [[ "$env_name" =~ ^(dev|stage|prod)$ ]] || { echo "--env must be dev, stage or prod, got: ${env_name:-nothing}" >&2; exit 1; }
+    [[ -f "$REPO_ROOT/.env" ]] || { echo "No .env in $REPO_ROOT: copy .env.example to .env and fill it in." >&2; exit 1; }
+    set -a
+    # shellcheck disable=SC1091
+    . "$REPO_ROOT/.env"
+    set +a
+    url_var="DATABASE_URL_$(echo "$env_name" | tr '[:lower:]' '[:upper:]')"
+    DATABASE_URL="${!url_var:-}"
+    [[ -n "$DATABASE_URL" ]] || { echo "$url_var is empty in .env" >&2; exit 1; }
+    shift 2
+fi
+
+# Checked here, not inside connection_url: an exit inside $(...) would only leave the subshell.
+if [[ -z "${DATABASE_URL:-}" ]]; then
+    echo "Pass --env dev|stage|prod, or set DATABASE_URL." >&2
+    exit 1
+fi
+
 connection_url() {
-    if [[ -n "${DATABASE_URL:-}" ]]; then
-        # inside the psql container "localhost" is the container itself, so point it at the host machine
-        echo "$DATABASE_URL" | sed -E 's#@(localhost|127\.0\.0\.1)([:/])#@host.docker.internal\2#'
-        return
-    fi
-    if [[ -z "${RENDER_API_KEY:-}" ]]; then
-        echo "Set DATABASE_URL, or RENDER_API_KEY to use the Render database." >&2
-        exit 1
-    fi
-    local url
-    url=$(curl -fsS -H "Authorization: Bearer $RENDER_API_KEY" -H "Accept: application/json" \
-            "https://api.render.com/v1/postgres/$RENDER_POSTGRES_ID/connection-info" \
-        | python3 -c 'import sys, json; print(json.load(sys.stdin)["externalConnectionString"])') || {
-        echo "Could not get the connection string for $RENDER_POSTGRES_ID from the Render API." >&2
-        exit 1
-    }
-    echo "${url}?sslmode=require"
+    # inside the psql container "localhost" is the container itself, so point it at the host machine
+    echo "$DATABASE_URL" | sed -E 's#@(localhost|127\.0\.0\.1)([:/])#@host.docker.internal\2#'
 }
 
 # Runs psql in Docker. SQL comes from stdin, so psql variables such as :'loan_id' are substituted safely.
@@ -99,7 +102,7 @@ SQL
         fi
         ;;
     sql)
-        [[ -n "${1:-}" ]] || { echo "Usage: tools/db.sh sql \"SELECT ...\"" >&2; exit 1; }
+        [[ -n "${1:-}" ]] || { echo "Usage: tools/db.sh [--env dev|stage|prod] sql \"SELECT ...\"" >&2; exit 1; }
         echo "$1" | run_psql
         ;;
     psql)
