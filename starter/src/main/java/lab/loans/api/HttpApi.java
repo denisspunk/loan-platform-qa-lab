@@ -27,6 +27,7 @@ import java.util.concurrent.Executors;
  *   POST /loans          {"deviceId","price","dailyRate"}   -> 201 loan
  *   GET  /loans/{id}                                        -> 200 loan | 404
  *   POST /payments       {"paymentId","loanId","amount"}    -> 202 accepted | 400 | 404
+ *   GET  /health                                            -> 200 {"status":"UP"}
  * A payment is only validated here; it is applied asynchronously by the payments.received consumer.
  */
 public class HttpApi {
@@ -55,6 +56,7 @@ public class HttpApi {
         server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.createContext("/loans", exchange -> handle(exchange, this::routeLoans));
         server.createContext("/payments", exchange -> handle(exchange, this::routePayments));
+        server.createContext("/health", exchange -> handle(exchange, this::routeHealth));
         server.setExecutor(executor);
         server.start();
         return server.getAddress().getPort();
@@ -116,6 +118,17 @@ public class HttpApi {
         } else {
             send(exchange, 404, error("no route for " + method + " " + path));
         }
+    }
+
+    /** Liveness for the hosting platform and smoke tests: no dependencies are checked yet. */
+    private void routeHealth(HttpExchange exchange) throws IOException {
+        String method = exchange.getRequestMethod();
+        String path = exchange.getRequestURI().getPath();
+        if (!method.equals("GET") || !path.equals("/health")) {
+            send(exchange, 404, error("no route for " + method + " " + path));
+            return;
+        }
+        send(exchange, 200, Map.of("status", "UP"));
     }
 
     private void routePayments(HttpExchange exchange) throws IOException {
