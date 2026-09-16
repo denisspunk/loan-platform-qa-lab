@@ -111,10 +111,16 @@ jobs:
       # each script prints its table to the run page and exits non-zero when the document
       # and the suite disagree: a tag naming a finding that is gone, a matrix row naming a
       # test that was renamed. The details of a failure go to the log, not the summary.
+      # tee, not >>: the summary is for the reviewer, the log is where you look when the
+      # step failed, and a step whose log is empty is a step nobody can debug.
+      # shell: bash is load-bearing — the default run shell is `bash -e` without pipefail,
+      # so the pipeline would report tee's exit code and the check would never fail.
       - name: Findings to tests
-        run: ../tools/findings.py --markdown >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
+        run: ../tools/findings.py --markdown | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Requirements to tests
-        run: ../tools/traceability.py --markdown >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
+        run: ../tools/traceability.py --markdown | tee -a "$GITHUB_STEP_SUMMARY"
 
   # the four levels ran in four JVMs on four machines: only their merged probe data
   # says what the pyramid as a whole actually exercises
