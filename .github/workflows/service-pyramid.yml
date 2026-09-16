@@ -27,6 +27,14 @@ jobs:
       - name: Unit and component tests
         run: mvn -B -ntp test -Dgroups="unit | component" -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
 
+      # the raw probe data of this level; the coverage job merges all four
+      - name: Coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-exec-unit-and-component
+          path: service/target/jacoco.exec
+          retention-days: 14
+
   # what we send to the partner, and what our API promises to other squads
   contract:
     name: service-contract
@@ -40,6 +48,14 @@ jobs:
         run: ../tools/maven-resolve.sh
       - name: Contract tests
         run: mvn -B -ntp test -Dgroups=contract -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+
+      # the raw probe data of this level; the coverage job merges all four
+      - name: Coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-exec-contract
+          path: service/target/jacoco.exec
+          retention-days: 14
 
   # the running service over HTTP with a WireMock partner, and Postgres in Docker through Testcontainers
   integration:
@@ -55,6 +71,14 @@ jobs:
       - name: Integration tests
         run: mvn -B -ntp test -Dgroups=integration -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
 
+      # the raw probe data of this level; the coverage job merges all four
+      - name: Coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-exec-integration
+          path: service/target/jacoco.exec
+          retention-days: 14
+
   # customer journeys over days of the test clock
   e2e:
     name: service-e2e
@@ -68,3 +92,76 @@ jobs:
         run: ../tools/maven-resolve.sh
       - name: End-to-end tests
         run: mvn -B -ntp test -Dgroups=e2e -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+
+      # the raw probe data of this level; the coverage job merges all four
+      - name: Coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-exec-e2e
+          path: service/target/jacoco.exec
+          retention-days: 14
+
+  # the four levels ran in four JVMs on four machines: only their merged probe data
+  # says what the pyramid as a whole actually exercises
+  coverage:
+    name: service-coverage
+    needs: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - name: Resolve dependencies
+        run: ../tools/maven-resolve.sh
+
+      - name: Collect the coverage data of every level
+        uses: actions/download-artifact@v4
+        with:
+          pattern: jacoco-exec-*
+          path: service/target/coverage-exec
+          merge-multiple: false
+
+      # download-artifact keeps each artifact in its own folder, all holding jacoco.exec;
+      # flatten them into one directory of uniquely named files for jacoco:merge
+      - name: Flatten
+        run: |
+          cd target/coverage-exec
+          for dir in */; do mv "$dir/jacoco.exec" "${dir%/}.exec" && rmdir "$dir"; done
+          ls -l
+
+      - name: Merge and report
+        run: mvn -B -ntp compile jacoco:merge@merge-exec jacoco:report@merged-report
+
+      - name: Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: service/target/site/jacoco-merged
+          retention-days: 14
+
+      # the numbers themselves, on the run page, so a reviewer does not have to download anything
+      - name: Summary
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import csv
+          rows = list(csv.DictReader(open('target/site/jacoco-merged/jacoco.csv')))
+          def pct(metric):
+              missed = sum(int(r[metric + '_MISSED']) for r in rows)
+              covered = sum(int(r[metric + '_COVERED']) for r in rows)
+              total = missed + covered
+              return f'{100 * covered / total:.1f}% ({covered}/{total})' if total else 'n/a'
+          print('## Coverage: the whole pyramid\n')
+          print('| Metric | Covered |')
+          print('|---|---|')
+          for label, metric in [('Lines', 'LINE'), ('Branches', 'BRANCH'), ('Methods', 'METHOD')]:
+              print(f'| {label} | {pct(metric)} |')
+          print('\n<details><summary>By class</summary>\n')
+          print('| Class | Lines | Branches |')
+          print('|---|---|---|')
+          def one(r, metric):
+              missed, covered = int(r[metric + '_MISSED']), int(r[metric + '_COVERED'])
+              return f'{100 * covered / (missed + covered):.0f}%' if missed + covered else '—'
+          for r in sorted(rows, key=lambda r: (r['PACKAGE'], r['CLASS'])):
+              print(f"| `{r['PACKAGE'].split('.')[-1]}/{r['CLASS']}` | {one(r, 'LINE')} | {one(r, 'BRANCH')} |")
+          print('\n</details>')
+          PY
