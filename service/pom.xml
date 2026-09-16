@@ -22,6 +22,11 @@
         <slf4j.version>2.0.19</slf4j.version>
         <postgresql.version>42.7.13</postgresql.version>
         <testcontainers.version>2.0.5</testcontainers.version>
+        <jacoco.version>0.8.13</jacoco.version>
+
+        <!-- jacoco:prepare-agent fills this in; empty by default so surefire still starts
+             when coverage is off (-Djacoco.skip=true) -->
+        <jacocoArgLine></jacocoArgLine>
 
         <!-- tests against a deployed stand run only on request:
              mvn test -Dgroups="smoke | remote" -DexcludedGroups= -Dlab.baseUrl=https://... -->
@@ -150,8 +155,84 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.6</version>
                 <configuration>
-                    <argLine>-javaagent:${org.mockito:mockito-core:jar} -Xshare:off</argLine>
+                    <!-- @{...} is resolved when the fork starts, not when the pom is read, so the
+                         JaCoCo agent set later by prepare-agent lands here next to Mockito's -->
+                    <argLine>@{jacocoArgLine} -javaagent:${org.mockito:mockito-core:jar} -Xshare:off</argLine>
                 </configuration>
+            </plugin>
+            <plugin>
+                <!-- code coverage; declared after surefire so report runs once the tests are done -->
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <!-- puts -javaagent:...jacocoagent.jar into ${jacocoArgLine} -->
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                        <configuration>
+                            <propertyName>jacocoArgLine</propertyName>
+                            <!-- JaCoCo appends by default, so without a clean each local run would
+                                 quietly add to the one before and report more than it covered.
+                                 Safe here because surefire uses a single fork; with forkCount > 1
+                                 the forks would overwrite each other and this has to go back to true -->
+                            <append>false</append>
+                            <!-- instrument the service and nothing else: the tests are not the
+                                 subject, and the JDK's own HTTP server classes only add log noise -->
+                            <includes>
+                                <include>lab.loans.*</include>
+                            </includes>
+                            <!-- Mockito builds its mocks for the JVM it runs on, so on a JDK newer
+                                 than JaCoCo supports they fail to instrument; they are not our code -->
+                            <excludes>
+                                <exclude>*MockitoMock*</exclude>
+                                <exclude>*$auxiliary*</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <!-- one level, one JVM: target/site/jacoco/index.html -->
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <!-- CI only: mvn jacoco:merge@merge-exec over the .exec files the
+                             pyramid jobs collected into target/coverage-exec/ -->
+                        <id>merge-exec</id>
+                        <phase>none</phase>
+                        <goals>
+                            <goal>merge</goal>
+                        </goals>
+                        <configuration>
+                            <fileSets>
+                                <fileSet>
+                                    <directory>${project.build.directory}/coverage-exec</directory>
+                                    <includes>
+                                        <include>*.exec</include>
+                                    </includes>
+                                </fileSet>
+                            </fileSets>
+                            <destFile>${project.build.directory}/jacoco-merged.exec</destFile>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <!-- CI only: mvn jacoco:report@merged-report, the whole pyramid at once -->
+                        <id>merged-report</id>
+                        <phase>none</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+                            <outputDirectory>${project.build.directory}/site/jacoco-merged</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
