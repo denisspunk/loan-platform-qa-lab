@@ -76,6 +76,7 @@ class KnoxClientContractTest {
 
     @Test
     @DisplayName("Relock keeps fractions of a second in the relock moment (F-07)")
+    @Tag("F-07")
     void relockKeepsFractionsOfASecond() {
         client.scheduleRelock(imei, Instant.parse("2026-09-16T09:00:00.244206Z"), "MPESA-3");
 

@@ -120,6 +120,7 @@ class LoanHistoryApiTest extends BaseIT {
 
     @Test
     @DisplayName("Payment to a paid-off loan is recorded as LOAN_ALREADY_PAID_OFF (F-01)")
+    @Tag("F-01")
     void paymentToAPaidOffLoanIsRecordedAsAlreadyPaidOff() {
         LoanJson loan = loanSteps.openLoan(aLoan().price(300).dailyRate(100));
         String payoff = uniquePaymentId();

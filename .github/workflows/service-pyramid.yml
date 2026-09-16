@@ -24,6 +24,11 @@ jobs:
         with: { distribution: temurin, java-version: "21", cache: maven }
       - name: Resolve dependencies
         run: ../tools/maven-resolve.sh
+      # cheap, and it fails before any test runs: a finding whose @Tag no longer matches
+      # BUGS.md means the link between the document and the tests has quietly rotted
+      - name: Findings match the tests
+        run: ../tools/findings.py
+
       - name: Unit and component tests
         run: mvn -B -ntp test -Dgroups="unit | component" -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
 

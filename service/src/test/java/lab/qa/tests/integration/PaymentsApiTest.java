@@ -158,6 +158,7 @@ class PaymentsApiTest extends BaseIT {
 
     @Test
     @DisplayName("Payment to a paid-off loan is accepted but changes nothing (F-01)")
+    @Tag("F-01")
     void paymentToAPaidOffLoanChangesNothing() {
         LoanJson loan = loanSteps.openLoan(aLoan().price(300).dailyRate(100));
         paymentSteps.pay(loan, 300);
@@ -179,6 +180,7 @@ class PaymentsApiTest extends BaseIT {
 
     @Test
     @DisplayName("Partner failure sends the payment to dead letters and leaves the loan unchanged (F-04)")
+    @Tag("F-04")
     void partnerFailureLeavesTheLoanUnchanged() {
         LoanJson loan = loanSteps.openLoan(aLoan().price(12_000).dailyRate(100));
         knox.respondWith(loan.deviceId(), "relock", 503);
@@ -201,6 +203,7 @@ class PaymentsApiTest extends BaseIT {
     @Test
     @Disabled("F-04: the service unlocks the phone before the relock is scheduled; if relock fails, the phone stays unlocked")
     @DisplayName("Phone is not unlocked when the relock cannot be scheduled")
+    @Tag("F-04")
     void phoneIsNotUnlockedWhenTheRelockFails() {
         LoanJson loan = loanSteps.openLoan(aLoan().price(12_000).dailyRate(100));
         knox.respondWith(loan.deviceId(), "relock", 503);

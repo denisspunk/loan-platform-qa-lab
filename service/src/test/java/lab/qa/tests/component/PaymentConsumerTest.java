@@ -110,6 +110,7 @@ class PaymentConsumerTest {
 
     @Test
     @DisplayName("Partner failure on relock sends the event to dead letters and leaves the loan unchanged (F-04)")
+    @Tag("F-04")
     void partnerFailureOnRelockLeavesTheLoanUnchanged() {
         Loan loan = loans.save(new Loan("LN-4", "IMEI-4", 10_000, 100));
         deviceLock.failOn("IMEI-4", "relock");
@@ -133,6 +134,7 @@ class PaymentConsumerTest {
     @Test
     @Disabled("F-04: the processor unlocks the phone before the relock is scheduled; if relock fails, the phone stays unlocked")
     @DisplayName("Phone is not unlocked when the relock cannot be scheduled")
+    @Tag("F-04")
     void phoneIsNotUnlockedWhenTheRelockFails() {
         Loan loan = loans.save(new Loan("LN-5", "IMEI-5", 10_000, 100));
         deviceLock.failOn("IMEI-5", "relock");

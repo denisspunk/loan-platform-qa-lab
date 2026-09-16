@@ -154,6 +154,7 @@ class RemoteApiTest extends RemoteBase {
 
     @Test
     @DisplayName("Payment to a paid-off loan is accepted but changes nothing (F-01)")
+    @Tag("F-01")
     void paymentToAPaidOffLoanChangesNothing() {
         LoanJson loan = loanSteps.openLoan(aLoan().price(300).dailyRate(100));
         paymentSteps.pay(loan, 300);
@@ -183,6 +184,7 @@ class RemoteApiTest extends RemoteBase {
 
     @Test
     @DisplayName("Payment history shows an applied payment and a payment to the paid-off loan (F-01)")
+    @Tag("F-01")
     void paymentHistoryShowsBothResults() {
         LoanJson loan = loanSteps.openLoan(aLoan().price(300).dailyRate(100));
         String payoff = uniquePaymentId();
