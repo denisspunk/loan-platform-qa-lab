@@ -71,6 +71,8 @@ Principles:
 - Several checks of one result use soft assertions, so a failed test shows the whole picture.
 - A known bug is pinned twice: a passing test of today's behaviour with `(F-xx)` in its name, and a `@Disabled("F-xx: …")` test of the expected one. When the bug is fixed, the first goes red and the second is enabled.
 
+[TRACEABILITY.md](TRACEABILITY.md): every business rule and API guarantee mapped to the tests that defend it, with the gaps named — what no level covers and why.
+
 ## Web UI
 
 Open any stand in a browser, for example https://loan-platform-qa-lab.onrender.com. One page, plain HTML and JavaScript served by the service itself, no build step:
