@@ -115,6 +115,9 @@ flowchart LR
 - Before the tests, each stage downloads dependencies in a separate step with retries, so a Maven Central outage does not look like a failed test.
 - `delivery` promotes one and the same commit through the environments; prod needs an approval, and if gate 3 fails, prod rolls back by itself.
 - `stand-tests` can be run by hand against any stand: Actions → `stand-tests` → Run workflow.
+- `delivery` run by hand takes `stop_at`, which shortens the chain from the tail: dev only, or dev and stage. It can never skip a stage from the head, so what reaches a stand has always passed the one below it.
+- `direct-deploy` puts one commit on one stand with no gate at all, for the day dev is busy and stage is the only place to try something. It asks for a reason, prints it on the run page and says which gates were skipped. prod is on its list, because a rollback is a real need, and the prod environment still holds its required reviewer.
+- `deploy-stand` is the single implementation of "deploy a commit to a stand"; both of the above call it, and it serialises deploys per stand so the two cannot push different commits at one service.
 - Coverage is measured by JaCoCo in every pyramid job and merged in `service-coverage`: four JVMs on four machines, one number. The run page shows it as a table; the HTML report is the `jacoco-report` artifact of the run. Locally, `mvn test` writes the same report for the levels it ran to `service/target/site/jacoco/index.html`.
 
 | Environment | Stand | Database |

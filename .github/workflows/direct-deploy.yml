@@ -1,0 +1,81 @@
+# One commit, one stand, no chain. The escape hatch for the day dev is busy with something
+# else and stage is the only place a change can be tried.
+#
+# This is NOT the normal path: `delivery` is. Nothing here has passed the gate below it, and
+# the run says so out loud. prod is on the list because a rollback or a hotfix is a real
+# need, but the prod environment still holds its required reviewer, so nothing reaches it
+# without a person saying yes.
+name: direct-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which stand to deploy to
+        required: true
+        type: choice
+        options: [dev, stage, prod]
+      commit:
+        description: Full SHA of the commit to deploy
+        required: true
+      reason:
+        description: Why this is going out without the delivery chain
+        required: true
+      groups:
+        description: Which tests to run against the stand afterwards
+        required: true
+        default: smoke | remote
+        type: choice
+        options:
+          - smoke
+          - smoke | remote
+
+jobs:
+  # says what is about to happen before the deploy waits for an approval, so the run page
+  # answers "who bypassed what, and why" without opening any logs
+  announce:
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.check.outputs.sha }}
+    steps:
+      - id: check
+        env:
+          COMMIT: ${{ inputs.commit }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          REASON: ${{ inputs.reason }}
+          WHO: ${{ github.actor }}
+        run: |
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a full commit SHA: $COMMIT"; exit 1; }
+          echo "sha=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "::warning::$ENVIRONMENT is being deployed outside the delivery chain by $WHO: $REASON"
+          {
+            echo "## Deployed outside the delivery chain"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| stand | \`${ENVIRONMENT}\` |"
+            echo "| commit | \`${COMMIT}\` |"
+            echo "| asked by | @${WHO} |"
+            echo "| reason | ${REASON} |"
+            echo
+            echo "The gates below this stand were **not** run. Only the checks in this run apply."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: announce
+    uses: ./.github/workflows/deploy-stand.yml
+    with:
+      environment: ${{ inputs.environment }}
+      commit: ${{ needs.announce.outputs.commit }}
+      note: "direct deploy by @${{ github.actor }} — ${{ inputs.reason }}"
+    secrets:
+      render_api_key: ${{ secrets.RENDER_API_KEY }}
+
+  # the stand tests of the very commit that was deployed, not of whatever main holds now
+  verify:
+    needs: [announce, deploy]
+    uses: ./.github/workflows/stand-tests.yml
+    with:
+      base_url: ${{ needs.deploy.outputs.url }}
+      groups: ${{ inputs.groups }}
+      ref: ${{ needs.announce.outputs.commit }}

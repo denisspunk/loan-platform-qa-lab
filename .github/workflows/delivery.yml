@@ -4,6 +4,11 @@
 #   gate 2: smoke and remote API regression on stage
 #   approval: the prod environment waits for a reviewer
 #   gate 3: smoke on prod; if it fails, prod goes back to the commit it ran before
+#
+# Run by hand, `stop_at` shortens the chain from the tail: dev only, or dev and stage. It
+# can never skip a stage from the head, so the promise holds — nothing reaches a stand
+# without having passed the one below it. To put a commit straight on a stand and accept
+# that no gate has run, use `direct-deploy`, which says so on its own run page.
 name: delivery
 
 on:
@@ -16,6 +21,12 @@ on:
       commit:
         description: Full SHA of a commit on main to deliver
         required: true
+      stop_at:
+        description: How far to promote; the chain always starts at dev
+        required: true
+        default: prod
+        type: choice
+        options: [dev, stage, prod]
 
 # one delivery at a time; a newer one waits instead of cancelling a deploy halfway
 concurrency:
@@ -30,88 +41,74 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       commit: ${{ steps.commit.outputs.sha }}
+      stop_at: ${{ steps.commit.outputs.stop_at }}
     steps:
       - id: commit
         env:
           FROM_PYRAMID: ${{ github.event.workflow_run.head_sha }}
           FROM_INPUT: ${{ inputs.commit }}
+          STOP_AT: ${{ inputs.stop_at }}
         run: |
           sha="${FROM_INPUT:-$FROM_PYRAMID}"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a full commit SHA: $sha"; exit 1; }
+          # the automatic trigger carries no inputs and always means the whole chain
+          stop_at="${STOP_AT:-prod}"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "Delivering commit \`$sha\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "stop_at=$stop_at" >> "$GITHUB_OUTPUT"
+          echo "Delivering commit \`$sha\` as far as \`$stop_at\`" >> "$GITHUB_STEP_SUMMARY"
 
   deploy-dev:
     needs: select-commit
-    runs-on: ubuntu-latest
-    environment:
-      name: dev
-      url: ${{ vars.STAND_URL_DEV }}
-    steps:
-      - uses: actions/checkout@v4
-      - env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          SERVICE: ${{ vars.RENDER_SERVICE_DEV }}
-          COMMIT: ${{ needs.select-commit.outputs.commit }}
-        run: tools/render.sh deploy "$SERVICE" "$COMMIT"
+    uses: ./.github/workflows/deploy-stand.yml
+    with:
+      environment: dev
+      commit: ${{ needs.select-commit.outputs.commit }}
+    secrets:
+      render_api_key: ${{ secrets.RENDER_API_KEY }}
 
   gate-1-dev:
     needs: [select-commit, deploy-dev]
     uses: ./.github/workflows/stand-tests.yml
     with:
-      base_url: ${{ vars.STAND_URL_DEV }}
+      base_url: ${{ needs.deploy-dev.outputs.url }}
       groups: smoke | remote
       ref: ${{ needs.select-commit.outputs.commit }}
 
+  # skipping the tail is safe: stage still cannot run unless dev deployed and gate 1 passed
   deploy-stage:
     needs: [select-commit, gate-1-dev]
-    runs-on: ubuntu-latest
-    environment:
-      name: stage
-      url: ${{ vars.STAND_URL_STAGE }}
-    steps:
-      - uses: actions/checkout@v4
-      - env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          SERVICE: ${{ vars.RENDER_SERVICE_STAGE }}
-          COMMIT: ${{ needs.select-commit.outputs.commit }}
-        run: tools/render.sh deploy "$SERVICE" "$COMMIT"
+    if: needs.select-commit.outputs.stop_at != 'dev'
+    uses: ./.github/workflows/deploy-stand.yml
+    with:
+      environment: stage
+      commit: ${{ needs.select-commit.outputs.commit }}
+    secrets:
+      render_api_key: ${{ secrets.RENDER_API_KEY }}
 
   gate-2-stage:
     needs: [select-commit, deploy-stage]
     uses: ./.github/workflows/stand-tests.yml
     with:
-      base_url: ${{ vars.STAND_URL_STAGE }}
+      base_url: ${{ needs.deploy-stage.outputs.url }}
       groups: smoke | remote
       ref: ${{ needs.select-commit.outputs.commit }}
 
+  # the prod environment has a required reviewer: the deploy waits until someone approves
   deploy-prod:
     needs: [select-commit, gate-2-stage]
-    runs-on: ubuntu-latest
-    # the prod environment has a required reviewer: the job waits here until someone approves
-    environment:
-      name: prod
-      url: ${{ vars.STAND_URL_PROD }}
-    outputs:
-      previous: ${{ steps.previous.outputs.commit }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: previous
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          SERVICE: ${{ vars.RENDER_SERVICE_PROD }}
-        run: echo "commit=$(tools/render.sh live-commit "$SERVICE")" >> "$GITHUB_OUTPUT"
-      - env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          SERVICE: ${{ vars.RENDER_SERVICE_PROD }}
-          COMMIT: ${{ needs.select-commit.outputs.commit }}
-        run: tools/render.sh deploy "$SERVICE" "$COMMIT"
+    if: needs.select-commit.outputs.stop_at == 'prod'
+    uses: ./.github/workflows/deploy-stand.yml
+    with:
+      environment: prod
+      commit: ${{ needs.select-commit.outputs.commit }}
+    secrets:
+      render_api_key: ${{ secrets.RENDER_API_KEY }}
 
   gate-3-prod:
     needs: [select-commit, deploy-prod]
     uses: ./.github/workflows/stand-tests.yml
     with:
-      base_url: ${{ vars.STAND_URL_PROD }}
+      base_url: ${{ needs.deploy-prod.outputs.url }}
       groups: smoke
       ref: ${{ needs.select-commit.outputs.commit }}
 
