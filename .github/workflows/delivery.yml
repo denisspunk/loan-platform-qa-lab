@@ -93,9 +93,26 @@ jobs:
       groups: smoke | remote
       ref: ${{ needs.select-commit.outputs.commit }}
 
+  # What prod runs before anything touches it. A job of its own, deliberately without
+  # `environment: prod`, for two reasons: reading needs no approval, and the rollback has to know
+  # this commit even when the deploy failed — a reusable workflow that fails passes on no outputs.
+  prod-before:
+    needs: [select-commit, gate-2-stage]
+    if: needs.select-commit.outputs.stop_at == 'prod'
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.live.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: live
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE: ${{ vars.RENDER_SERVICE_PROD }}
+        run: echo "commit=$(tools/render.sh live-commit "$SERVICE")" >> "$GITHUB_OUTPUT"
+
   # the prod environment has a required reviewer: the deploy waits until someone approves
   deploy-prod:
-    needs: [select-commit, gate-2-stage]
+    needs: [select-commit, gate-2-stage, prod-before]
     if: needs.select-commit.outputs.stop_at == 'prod'
     uses: ./.github/workflows/deploy-stand.yml
     with:
@@ -112,17 +129,41 @@ jobs:
       groups: smoke
       ref: ${{ needs.select-commit.outputs.commit }}
 
-  # no environment here on purpose: a rollback must not wait for another approval
+  # No environment here on purpose: a rollback must not wait for another approval.
+  #
+  # It also runs when the DEPLOY failed, not only when gate 3 did. A deploy that times out can
+  # still go live afterwards, and then prod is serving a commit no gate has looked at while the
+  # pipeline shows red and nobody is coming. Asking Render what prod is actually running keeps
+  # that honest: a rejected approval or a cancelled deploy changed nothing, and this says so
+  # instead of redeploying for no reason.
   rollback-prod:
-    needs: [deploy-prod, gate-3-prod]
-    if: failure() && needs.deploy-prod.result == 'success' && needs.deploy-prod.outputs.previous != ''
+    needs: [select-commit, prod-before, deploy-prod, gate-3-prod]
+    if: >-
+      always() && needs.prod-before.outputs.commit != '' &&
+      (needs.deploy-prod.result == 'failure' || needs.gate-3-prod.result == 'failure')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           SERVICE: ${{ vars.RENDER_SERVICE_PROD }}
-          COMMIT: ${{ needs.deploy-prod.outputs.previous }}
+          PREVIOUS: ${{ needs.prod-before.outputs.commit }}
+          ATTEMPTED: ${{ needs.select-commit.outputs.commit }}
         run: |
-          echo "::warning::gate 3 failed on prod, rolling back to $COMMIT"
-          tools/render.sh deploy "$SERVICE" "$COMMIT"
+          live=$(tools/render.sh live-commit "$SERVICE")
+          if [[ "$live" == "$PREVIOUS" ]]; then
+            echo "prod is still running $PREVIOUS: the deploy never took, nothing to roll back"
+            echo "Prod was left on \`$PREVIOUS\`; no rollback was needed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "::warning::prod is running $live, which no gate has passed; rolling back to $PREVIOUS"
+          tools/render.sh deploy "$SERVICE" "$PREVIOUS"
+          {
+            echo "### Rolled back"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| was attempting | \`${ATTEMPTED}\` |"
+            echo "| found running | \`${live}\` |"
+            echo "| rolled back to | \`${PREVIOUS}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

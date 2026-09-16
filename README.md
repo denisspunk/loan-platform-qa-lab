@@ -113,7 +113,8 @@ flowchart LR
 
 - `main` accepts only pull requests: the four pyramid stages are required and direct pushes are blocked.
 - Before the tests, each stage downloads dependencies in a separate step with retries, so a Maven Central outage does not look like a failed test.
-- `delivery` promotes one and the same commit through the environments; prod needs an approval, and if gate 3 fails, prod rolls back by itself.
+- `delivery` promotes one and the same commit through the environments; prod needs an approval, and prod rolls back by itself when gate 3 fails — or when the prod deploy itself fails, because a deploy that timed out can still go live afterwards. The rollback asks Render what prod is actually running before it acts, so a rejected approval costs nothing.
+- A deploy that runs out of time is cancelled rather than abandoned. Left running, it would change the stand minutes after the pipeline called it a failure, and the next delivery would collide with it — which is exactly what happened on 2026-09-16.
 - `stand-tests` can be run by hand against any stand: Actions → `stand-tests` → Run workflow.
 - `delivery` run by hand takes `stop_at`, which shortens the chain from the tail: dev only, or dev and stage. It can never skip a stage from the head, so what reaches a stand has always passed the one below it.
 - `direct-deploy` puts one commit on one stand with no gate at all, for the day dev is busy and stage is the only place to try something. It asks for a reason, prints it on the run page and says which gates were skipped. prod is on its list, because a rollback is a real need, and the prod environment still holds its required reviewer.
