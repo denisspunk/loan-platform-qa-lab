@@ -99,6 +99,10 @@ def main():
     rows, problems = collect()
 
     if args.markdown:
+        counted = {s: sum(1 for r in rows if r["state"] == s) for s in
+                   ("pinned", "expected only", "document only")}
+        print("## Findings: pinned by tests, or only in the document\n")
+        print(", ".join(f"**{n}** {s}" for s, n in counted.items()) + "\n")
         print("| Finding | Pinned by | Expected behaviour | State |")
         print("|---|---|---|---|")
         for r in rows:

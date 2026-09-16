@@ -23,7 +23,7 @@ A parameterized method counts as one entry here, but as several tests in the tot
 | BR-01 | Every full daily rate buys one day; the remainder is kept as credit | U, C, E, R | `UnlockPolicyTest#everyFullDailyRateBuysOneDay` (8 cases), `PaymentProcessorTest#fullDayPaymentUnlocksAndSchedulesTheRelock`, `PhoneLoanJourneyTest#customerPaysDayByDayUntilThePhoneIsTheirs`, `RemoteApiTest#smallPaymentsBuyADayOnlyWhenTheyAddUp` | Covered |
 | BR-02 | A payment below the daily rate only adds to the credit; the phone stays as it is | U, I, E, R | `UnlockPolicyTest#lessThanOneDayKeepsThePhoneAsItIs`, `LoanTest#keepDecisionOnlyAddsTheMoney`, `PaymentsApiTest#partialPaymentKeepsThePhoneLocked`, `PhoneLoanJourneyTest#smallPaymentsBuyADayOnlyWhenTheyAddUp`, `RemoteApiTest#smallPaymentsBuyADayOnlyWhenTheyAddUp` | Covered |
 | BR-03 | Credit carries over and is added to the next payment | U, C, E | `UnlockPolicyTest#everyFullDailyRateBuysOneDay` (credit 50 + 50, credit 30 + 50), `PaymentConsumerTest#partialPaymentsAddUpInOrder`, `PhoneLoanJourneyTest#smallPaymentsBuyADayOnlyWhenTheyAddUp` | Covered |
-| BR-04 | A locked or expired phone is unlocked from now; an unlocked phone has days added on top | U, E, R | `UnlockPolicyTest#lockedPhoneIsUnlockedFromNow`, `#newDaysAreAddedOnTopOfAnUnlockedPhone`, `#expiredUnlockCountsNewDaysFromNow`, `PhoneLoanJourneyTest#payingAgainWhileUnlockedExtendsThePhone`, `RemoteApiTest#payingAgainWhileUnlockedAddsADay` | Covered |
+| BR-04 | A locked or expired phone is unlocked from now; an unlocked phone has days added on top | U, E, R | `UnlockPolicyTest#lockedPhoneIsUnlockedFromNow`, `#newDaysAreAddedOnTopOfAnUnlockedPhone`, `#expiredUnlockCountsNewDaysFromNow`, `LoanTest#unlockDecisionUnlocksThePhone`, `PhoneLoanJourneyTest#payingAgainWhileUnlockedExtendsThePhone`, `RemoteApiTest#payingAgainWhileUnlockedAddsADay` | Covered |
 | BR-05 | The phone relocks by itself exactly at `unlockedUntil`, without a stored change | U, E | `LoanTest#phoneRelocksExactlyAtUnlockedUntil` (−1 s, 0 s, +1 s), `#relockByTimeDoesNotChangeTheStoredState`, `PhoneLoanJourneyTest#payingAgainWhileUnlockedExtendsThePhone` | Covered |
 | BR-06 | When the whole price is paid the loan is `PAID_OFF` and the phone `RELEASED` | U, I, E, R | `UnlockPolicyTest#paymentThatCoversThePriceReleasesThePhone` (299/300/350), `LoanTest#releaseDecisionPaysTheLoanOff`, `PaymentProcessorTest#paymentThatCoversThePriceReleasesTheLock`, `PaymentsApiTest#paymentThatCoversThePriceReleasesThePhone`, `PhoneLoanJourneyTest#customerPaysDayByDayUntilThePhoneIsTheirs`, `RemoteApiTest#paymentThatCoversThePriceReleasesThePhone` | Covered |
 | BR-07 | A payment redelivered with the same `paymentId` is not applied twice | U, C, I, R | `PaymentProcessorTest#samePaymentIdIsAppliedOnlyOnce`, `PaymentConsumerTest#duplicateDeliveryIsAppliedOnce`, `PaymentsApiTest#duplicateCallbackIsAppliedOnce`, `LoanHistoryApiTest#duplicatePaymentAppearsOnce`, `RemoteApiTest#duplicateCallbackIsAppliedOnce` | Covered |
@@ -112,10 +112,10 @@ A parameterized method counts as one entry here, but as several tests in the tot
 | INT — partner | 9 | 6 | 0 | 1 | 2 |
 | EVT — asynchronous | 5 | 4 | 0 | 0 | 1 |
 | DATA — persistence | 9 | 8 | 1 | 0 | 0 |
-| OPS — delivery | 4 | 2 | 0 | 0 | 1 |
-| **Total** | **57** | **42** | **3** | **6** | **5** |
+| OPS — delivery | 4 | 3 | 0 | 0 | 1 |
+| **Total** | **57** | **43** | **3** | **6** | **5** |
 
-The four status columns total 56, not 57: OPS-03 is enforced by branch protection rather than by a test.
+OPS-03 counts as covered, by branch protection rather than by a test; its row says so.
 
 Tests behind those requirements, by level:
 

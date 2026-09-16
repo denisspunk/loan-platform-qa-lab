@@ -24,11 +24,6 @@ jobs:
         with: { distribution: temurin, java-version: "21", cache: maven }
       - name: Resolve dependencies
         run: ../tools/maven-resolve.sh
-      # cheap, and it fails before any test runs: a finding whose @Tag no longer matches
-      # BUGS.md means the link between the document and the tests has quietly rotted
-      - name: Findings match the tests
-        run: ../tools/findings.py
-
       - name: Unit and component tests
         run: mvn -B -ntp test -Dgroups="unit | component" -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
 
@@ -105,6 +100,21 @@ jobs:
           name: jacoco-exec-e2e
           path: service/target/jacoco.exec
           retention-days: 14
+
+  # the documents that describe the suite, checked against the suite itself: cheap, no build,
+  # and they answer the question a reviewer actually has — what is covered and what is not
+  traceability:
+    name: service-traceability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # each script prints its table to the run page and exits non-zero when the document
+      # and the suite disagree: a tag naming a finding that is gone, a matrix row naming a
+      # test that was renamed. The details of a failure go to the log, not the summary.
+      - name: Findings to tests
+        run: ../tools/findings.py --markdown >> "$GITHUB_STEP_SUMMARY"
+      - name: Requirements to tests
+        run: ../tools/traceability.py --markdown >> "$GITHUB_STEP_SUMMARY"
 
   # the four levels ran in four JVMs on four machines: only their merged probe data
   # says what the pyramid as a whole actually exercises
