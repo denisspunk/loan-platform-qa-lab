@@ -1,7 +1,7 @@
 package lab.qa.tests.smoke;
 
 import lab.qa.clients.LoanJson;
-import lab.qa.core.RemoteBase;
+import lab.qa.core.StandBase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -18,7 +18,7 @@ import static org.hamcrest.Matchers.startsWith;
 /** The first check after a deploy: the stand is up, a loan opens and a payment goes all the way through. */
 @Tag("smoke")
 @DisplayName("Stand smoke: the deployed service is up and a payment goes through")
-class StandSmokeTest extends RemoteBase {
+class StandSmokeTest extends StandBase {
 
     /** The stand and this machine keep time separately; allow a little drift between the two clocks. */
     private static final Duration CLOCK_SKEW = Duration.ofMinutes(2);

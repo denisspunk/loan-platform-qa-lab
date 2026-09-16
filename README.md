@@ -51,7 +51,7 @@ Stack: Java 21, the JDK's built-in HTTP server, Jackson, plain JDBC and Postgres
 | integration | the running service over HTTP, including the web UI page; the repository on a real Postgres | RestAssured, WireMock, Testcontainers | 59 | every PR |
 | e2e | a customer's journey over several days of test clock | all of the above | 3 | every PR |
 | smoke | the stand is up, the web UI is served, a loan is created, a payment goes through | RestAssured | 4 | after each deploy |
-| remote | API regression on a deployed stand, including list and history | RestAssured | 15 | dev and stage |
+| regression | API rules on a deployed stand; the 9 tagged `readonly` change nothing and may run on prod | RestAssured | 24 | dev and stage |
 
 `mvn test` runs the first five levels: 120 tests, 3 of them `@Disabled` tests of known bugs (see below).
 
@@ -63,7 +63,7 @@ Stack: Java 21, the JDK's built-in HTTP server, Jackson, plain JDBC and Postgres
 | `dsl/` | `LoanSteps`, `PaymentSteps`: steps in business words; steps wait, assertions stay in the tests |
 | `data/` | `TestData`: a unique IMEI and paymentId per test, the `aLoan()` builder |
 | `clients/` | `LoansApi` (RestAssured), `KnoxStub` (WireMock), request and response models |
-| `core/` | `BaseIT` starts the partner stub and the service; `RemoteBase` for stands; `TestClock`; `Config` |
+| `core/` | `BaseIT` starts the partner stub and the service; `StandBase` for a deployed stand; `TestClock`; `Config` |
 
 Principles:
 - Tests do not depend on each other or on order: data is unique, time comes from a controlled `TestClock`, and expected dates are derived from it, not hardcoded.
@@ -105,8 +105,8 @@ No bug goes unnoticed, and the table shows which level catches each one earliest
 flowchart LR
     PR[Pull request] --> Pyramid[service-pyramid<br/>unit+component → contract → integration → e2e]
     Pyramid -->|4 required checks| Main[main]
-    Main --> Dev[deploy dev] --> G1[gate 1<br/>smoke + remote]
-    G1 --> Stage[deploy stage] --> G2[gate 2<br/>smoke + remote]
+    Main --> Dev[deploy dev] --> G1[gate 1<br/>smoke + regression]
+    G1 --> Stage[deploy stage] --> G2[gate 2<br/>smoke + regression]
     G2 --> Approve{approval} --> Prod[deploy prod] --> G3[gate 3<br/>smoke]
     G3 -->|fail| Rollback[rollback to the previous commit]
 ```
@@ -116,7 +116,7 @@ flowchart LR
 - `delivery` promotes one and the same commit through the environments; prod needs an approval, and prod rolls back by itself when gate 3 fails — or when the prod deploy itself fails, because a deploy that timed out can still go live afterwards. The rollback asks Render what prod is actually running before it acts, so a rejected approval costs nothing.
 - A deploy that runs out of time is cancelled rather than abandoned. Left running, it would change the stand minutes after the pipeline called it a failure, and the next delivery would collide with it — which is exactly what happened on 2026-09-16.
 - `stand-tests` can be run by hand: Actions → `stand-tests` → Run workflow, picking the stand by name rather than by pasting an address. It reports which commit the stand is running against which commit the tests came from, and says so when they differ — that difference explains more failures than any defect does.
-- The remote regression opens loans and takes payments, so on prod it is refused: gate 3 runs `smoke` only, and every other path to prod obeys the same rule, whoever asked and however they named the stand.
+- The stand regression opens loans and takes payments, so on prod it is refused: gate 3 runs `smoke | readonly`, and every other path to prod obeys the same rule, whoever asked and however they named the stand.
 - `delivery` run by hand takes `stop_at`, which shortens the chain from the tail: dev only, or dev and stage. It can never skip a stage from the head, so what reaches a stand has always passed the one below it.
 - `direct-deploy` puts one commit on one stand with no gate at all, for the day dev is busy and stage is the only place to try something. It asks for a reason, prints it on the run page and says which gates were skipped. Its tests obey the prod rule above. prod is on its list, because a rollback is a real need, and the prod environment still holds its required reviewer.
 - `deploy-stand` is the single implementation of "deploy a commit to a stand"; both of the above call it, and it serialises deploys per stand so the two cannot push different commits at one service.
@@ -143,7 +143,7 @@ mvn test -Dtest=UnlockPolicyTest              # one class
 mvn test -Dlab.bugs=KNOX_EPOCH_DATE           # turn on a seeded bug
 
 # against a deployed stand
-mvn test -Dgroups="smoke | remote" -DexcludedGroups= -Dlab.baseUrl=https://loan-platform-qa-lab.onrender.com -Dlab.asyncTimeoutSeconds=30
+mvn test -Dgroups="smoke | regression" -DexcludedGroups= -Dlab.baseUrl=https://loan-platform-qa-lab.onrender.com -Dlab.asyncTimeoutSeconds=30
 ```
 
 The service locally: `docker build -t loans service && docker run -p 8080:8080 loans`, then open http://localhost:8080 for the UI or `curl localhost:8080/health`.
