@@ -73,6 +73,8 @@ jobs:
       base_url: ${{ needs.deploy-dev.outputs.url }}
       groups: smoke | remote
       ref: ${{ needs.select-commit.outputs.commit }}
+    secrets:
+      render_api_key: ${{ secrets.RENDER_API_KEY }}
 
   # skipping the tail is safe: stage still cannot run unless dev deployed and gate 1 passed
   deploy-stage:
@@ -92,6 +94,8 @@ jobs:
       base_url: ${{ needs.deploy-stage.outputs.url }}
       groups: smoke | remote
       ref: ${{ needs.select-commit.outputs.commit }}
+    secrets:
+      render_api_key: ${{ secrets.RENDER_API_KEY }}
 
   # What prod runs before anything touches it. A job of its own, deliberately without
   # `environment: prod`, for two reasons: reading needs no approval, and the rollback has to know
@@ -128,6 +132,8 @@ jobs:
       base_url: ${{ needs.deploy-prod.outputs.url }}
       groups: smoke
       ref: ${{ needs.select-commit.outputs.commit }}
+    secrets:
+      render_api_key: ${{ secrets.RENDER_API_KEY }}
 
   # No environment here on purpose: a rollback must not wait for another approval.
   #

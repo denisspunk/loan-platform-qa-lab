@@ -43,9 +43,15 @@ jobs:
           COMMIT: ${{ inputs.commit }}
           ENVIRONMENT: ${{ inputs.environment }}
           REASON: ${{ inputs.reason }}
+          GROUPS: ${{ inputs.groups }}
           WHO: ${{ github.actor }}
         run: |
           [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a full commit SHA: $COMMIT"; exit 1; }
+          # stand-tests refuses this too, but only after the deploy; catching it here costs nothing
+          if [[ "$ENVIRONMENT" == "prod" && "$GROUPS" == *remote* ]]; then
+            echo "::error::the remote tests write loans and payments; on prod choose 'smoke'"
+            exit 1
+          fi
           echo "sha=$COMMIT" >> "$GITHUB_OUTPUT"
           echo "::warning::$ENVIRONMENT is being deployed outside the delivery chain by $WHO: $REASON"
           {
@@ -79,3 +85,5 @@ jobs:
       base_url: ${{ needs.deploy.outputs.url }}
       groups: ${{ inputs.groups }}
       ref: ${{ needs.announce.outputs.commit }}
+    secrets:
+      render_api_key: ${{ secrets.RENDER_API_KEY }}

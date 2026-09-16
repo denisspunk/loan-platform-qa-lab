@@ -1,14 +1,19 @@
-# Tests against a deployed stand: smoke (quick, first check after a deploy) and remote (API regression over HTTP).
-# Run by hand from the Actions tab, or called by the delivery pipeline after a deploy is live.
+# Tests against a deployed stand: smoke (quick, first check after a deploy) and remote (API
+# regression over HTTP). Run by hand from the Actions tab, or called by a pipeline after a deploy.
+#
+# By hand you pick the stand by name, not by pasting an address: the remote tests write loans and
+# payments into whatever they are pointed at, and a pasted URL is one slip away from being prod.
 name: stand-tests
 
 on:
   workflow_dispatch:
     inputs:
-      base_url:
-        description: Address of the stand
+      environment:
+        description: Which stand to test
         required: true
-        default: https://loan-platform-qa-lab.onrender.com
+        default: dev
+        type: choice
+        options: [dev, stage, prod]
       groups:
         description: Which tests to run
         required: true
@@ -36,6 +41,10 @@ on:
         required: false
         type: string
         default: ""
+    secrets:
+      render_api_key:
+        description: Lets the run say which commit the stand is actually running
+        required: false
 
 defaults:
   run:
@@ -48,15 +57,81 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+
+      # One stand, named three ways: by environment (a run by hand), by address (a pipeline), and
+      # by the Render service behind it. Whichever we were given, work out the other two.
+      - id: stand
+        env:
+          VARS: ${{ toJSON(vars) }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          BASE_URL: ${{ inputs.base_url }}
+        run: |
+          key=""
+          if [[ -n "$ENVIRONMENT" ]]; then
+            key=$(printf '%s' "$ENVIRONMENT" | tr '[:lower:]' '[:upper:]')
+          elif [[ -n "$BASE_URL" ]]; then
+            # a pipeline passes the address; find the name it belongs to, if any
+            key=$(jq -r --arg u "$BASE_URL" '
+              to_entries | map(select(.key | startswith("STAND_URL_")))
+              | map(select(.value == $u)) | first | if . then (.key | ltrimstr("STAND_URL_")) else "" end
+            ' <<<"$VARS")
+          fi
+
+          url="$BASE_URL"
+          service=""
+          if [[ -n "$key" ]]; then
+            url=$(jq -r --arg k "STAND_URL_$key" '.[$k] // ""' <<<"$VARS")
+            service=$(jq -r --arg k "RENDER_SERVICE_$key" '.[$k] // ""' <<<"$VARS")
+          fi
+          if [[ -z "$url" ]]; then
+            echo "::error::no stand to test: neither an environment nor an address was given"
+            exit 1
+          fi
+
+          {
+            echo "environment=$(printf '%s' "${key:-unknown}" | tr '[:upper:]' '[:lower:]')"
+            echo "url=$url"
+            echo "service=$service"
+          } >> "$GITHUB_OUTPUT"
+
+      # The delivery pipeline runs smoke only on prod, deliberately: the remote regression opens
+      # loans and takes payments, and on prod those are real rows. Anything that reaches this
+      # workflow obeys the same rule, whoever called it and however they named the stand.
+      - name: Refuse the remote regression on prod
+        env:
+          ENVIRONMENT: ${{ steps.stand.outputs.environment }}
+          TEST_GROUPS: ${{ inputs.groups }}
+        run: |
+          if [[ "$ENVIRONMENT" == "prod" && "$TEST_GROUPS" == *remote* ]]; then
+            echo "::error::the remote tests write loans and payments; on prod run 'smoke' instead"
+            exit 1
+          fi
+
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21", cache: maven }
       # a Maven Central outage fails this step, not the stand tests
       - name: Resolve dependencies
         run: ../tools/maven-resolve.sh
+
+      # Tests from one commit against a stand running another is the most confusing way for this
+      # job to fail, so say it out loud rather than leave it to be worked out from the errors.
+      # Best effort: without a Render key the run still tests, it just cannot name the stand's commit.
+      - id: commits
+        env:
+          RENDER_API_KEY: ${{ secrets.render_api_key || secrets.RENDER_API_KEY }}
+          SERVICE: ${{ steps.stand.outputs.service }}
+        run: |
+          echo "tests=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          deployed=""
+          if [[ -n "$SERVICE" && -n "${RENDER_API_KEY:-}" ]]; then
+            deployed=$(../tools/render.sh live-commit "$SERVICE" || true)
+          fi
+          echo "deployed=$deployed" >> "$GITHUB_OUTPUT"
+
       # inputs go through environment variables, so nothing typed into the form is pasted into the script
       - name: Stand tests
         env:
-          BASE_URL: ${{ inputs.base_url }}
+          BASE_URL: ${{ steps.stand.outputs.url }}
           TEST_GROUPS: ${{ inputs.groups }}
         run: >
           mvn -B -ntp test
@@ -64,3 +139,28 @@ jobs:
           -Dlab.baseUrl="$BASE_URL"
           -Dlab.asyncTimeoutSeconds=30
           -Dsurefire.reportFormat=plain -Dsurefire.useFile=false
+
+      # always(): a failed run is exactly when you need to know what was tested against what
+      - name: Summary
+        if: always()
+        env:
+          ENVIRONMENT: ${{ steps.stand.outputs.environment }}
+          URL: ${{ steps.stand.outputs.url }}
+          TEST_GROUPS: ${{ inputs.groups }}
+          TESTS: ${{ steps.commits.outputs.tests }}
+          DEPLOYED: ${{ steps.commits.outputs.deployed }}
+        run: |
+          {
+            echo "### Stand tests: ${TEST_GROUPS} on ${ENVIRONMENT}"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| stand | ${URL} |"
+            echo "| tests from | \`${TESTS:-unknown}\` |"
+            echo "| stand is running | \`${DEPLOYED:-not asked}\` |"
+            if [[ -n "$DEPLOYED" && -n "$TESTS" && "$DEPLOYED" != "$TESTS" ]]; then
+              echo
+              echo "> The tests and the stand are on different commits. Failures here may be that"
+              echo "> difference rather than a defect."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
