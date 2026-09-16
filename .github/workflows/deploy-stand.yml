@@ -1,0 +1,101 @@
+# Put one commit on one stand. The only implementation of "deploy" in this repository:
+# both the delivery pipeline and a direct deploy call it, so the two cannot drift apart.
+# It knows nothing about gates or order — that is the caller's business.
+name: deploy-stand
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: dev, stage or prod
+        required: true
+        type: string
+      commit:
+        description: Full SHA to put on the stand
+        required: true
+        type: string
+      note:
+        description: One line for the run summary; the delivery pipeline leaves it empty
+        required: false
+        type: string
+        default: ""
+    outputs:
+      previous:
+        description: The commit the stand was running before this deploy, for a rollback
+        value: ${{ jobs.deploy.outputs.previous }}
+      url:
+        description: Address of the stand, so the caller can point its tests at it
+        value: ${{ jobs.deploy.outputs.url }}
+    secrets:
+      render_api_key:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # one deploy per stand at a time, whoever asked for it: the promotion pipeline and a
+    # direct deploy share this group, so they cannot push two commits at one service
+    concurrency:
+      group: stand-${{ inputs.environment }}
+      cancel-in-progress: false
+    # the environment's own protection rules apply here, not in the caller: prod waits for
+    # a reviewer no matter which workflow asked for the deploy
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ steps.target.outputs.url }}
+    outputs:
+      previous: ${{ steps.previous.outputs.commit }}
+      url: ${{ steps.target.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # the stand behind a name: RENDER_SERVICE_STAGE and STAND_URL_STAGE for "stage"
+      - id: target
+        env:
+          VARS: ${{ toJSON(vars) }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          key=$(printf '%s' "$ENVIRONMENT" | tr '[:lower:]' '[:upper:]')
+          service=$(jq -r --arg k "RENDER_SERVICE_$key" '.[$k] // ""' <<<"$VARS")
+          url=$(jq -r --arg k "STAND_URL_$key" '.[$k] // ""' <<<"$VARS")
+          if [[ -z "$service" || -z "$url" ]]; then
+            echo "::error::no RENDER_SERVICE_$key / STAND_URL_$key variable: unknown environment '$ENVIRONMENT'"
+            exit 1
+          fi
+          echo "service=$service" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      # read before we overwrite: this is what a rollback goes back to
+      - id: previous
+        env:
+          RENDER_API_KEY: ${{ secrets.render_api_key }}
+          SERVICE: ${{ steps.target.outputs.service }}
+        run: echo "commit=$(tools/render.sh live-commit "$SERVICE")" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.render_api_key }}
+          SERVICE: ${{ steps.target.outputs.service }}
+          COMMIT: ${{ inputs.commit }}
+        run: tools/render.sh deploy "$SERVICE" "$COMMIT"
+
+      - name: Summary
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          COMMIT: ${{ inputs.commit }}
+          PREVIOUS: ${{ steps.previous.outputs.commit }}
+          URL: ${{ steps.target.outputs.url }}
+          NOTE: ${{ inputs.note }}
+        run: |
+          {
+            echo "### ${ENVIRONMENT}"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| stand | ${URL} |"
+            echo "| now running | \`${COMMIT}\` |"
+            echo "| was running | \`${PREVIOUS:-unknown}\` |"
+            if [[ -n "$NOTE" ]]; then
+              echo "| note | ${NOTE} |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
