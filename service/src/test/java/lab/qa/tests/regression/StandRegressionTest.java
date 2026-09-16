@@ -1,9 +1,9 @@
-package lab.qa.tests.remote;
+package lab.qa.tests.regression;
 
 import lab.qa.clients.LoanJson;
 import lab.qa.clients.PaymentHistoryJson.PaymentJson;
 import lab.qa.clients.PaymentRequest;
-import lab.qa.core.RemoteBase;
+import lab.qa.core.StandBase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -12,6 +12,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Duration;
+import java.util.List;
 import java.time.Instant;
 
 import static io.restassured.module.jsv.JsonSchemaValidator.matchesJsonSchemaInClasspath;
@@ -21,14 +22,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.startsWith;
 
 /**
- * API regression on a deployed stand, over HTTP only: no test clock, no partner stub, no peeking inside.
- * Dates are compared with each other, not with a fixed moment. Partner calls cannot be seen from here.
+ * The business rules on a deployed stand, over HTTP only: no test clock, no partner stub, no peeking
+ * inside. Dates are compared with each other, not with a fixed moment. Partner calls cannot be seen.
+ *
+ * <p>Tests that change nothing on the stand also carry {@code @Tag("readonly")}. That subset is the
+ * only one prod is allowed to run: it cannot create a loan or take a payment, so it can check the
+ * contract of a release without leaving anything behind.
  */
-@Tag("remote")
-@DisplayName("Remote API regression: business rules on a deployed stand, over HTTP only")
-class RemoteApiTest extends RemoteBase {
+@Tag("regression")
+@DisplayName("Stand regression: business rules on a deployed stand, over HTTP only")
+class StandRegressionTest extends StandBase {
 
     // --- the API refuses what it must refuse ----------------------------------------------------
 
@@ -74,6 +80,38 @@ class RemoteApiTest extends RemoteBase {
         loansApi.request("DELETE", "/loans/LN-any")
                 .then().statusCode(404)
                 .body("error", equalTo("no route for DELETE /loans/LN-any"));
+    }
+
+    @DisplayName("Loans list refuses a limit that is not a number from 1 to 100")
+    @ParameterizedTest(name = "limit={0} -> 400")
+    @ValueSource(strings = {"0", "101", "-1", "abc", ""})
+    @Tag("readonly")
+    void loansListRefusesAnInvalidLimit(String limit) {
+        loansApi.listLoans(limit)
+                .then().statusCode(400)
+                .body("error", equalTo("limit must be a number from 1 to 100"))
+                .body(matchesJsonSchemaInClasspath("schemas/error.json"));
+    }
+
+    @Test
+    @DisplayName("Empty loan id is answered as an unknown loan (F-08)")
+    @Tag("readonly")
+    @Tag("F-08")
+    void emptyLoanIdIsAnsweredAsAnUnknownLoan() {
+        loansApi.getLoan("")
+                .then().statusCode(404)
+                .body("error", equalTo("loan  not found"))
+                .body(matchesJsonSchemaInClasspath("schemas/error.json"));
+    }
+
+    @Test
+    @DisplayName("Loan body that is not JSON is rejected, and nothing is opened")
+    @Tag("readonly")
+    void loanBodyThatIsNotJsonIsRejected() {
+        loansApi.postLoanBody("not json at all")
+                .then().statusCode(400)
+                .body("error", startsWith("invalid JSON"))
+                .body(matchesJsonSchemaInClasspath("schemas/error.json"));
     }
 
     // --- responses keep their published shape ---------------------------------------------------
@@ -200,5 +238,18 @@ class RemoteApiTest extends RemoteBase {
         assertThat(loanSteps.paymentHistory(loan).payments())
                 .extracting(PaymentJson::paymentId, PaymentJson::result)
                 .containsExactly(tuple(payoff, "APPLIED"), tuple(late, "LOAN_ALREADY_PAID_OFF"));
+    }
+
+    /** The refused values are above; these are the ends of the range the API promises to accept. */
+    @DisplayName("Loans list accepts the ends of the allowed range")
+    @ParameterizedTest(name = "limit={0} -> 200, no more than {0} loans")
+    @ValueSource(ints = {1, 100})
+    @Tag("readonly")
+    void loansListAcceptsTheEndsOfTheRange(int limit) {
+        List<LoanJson> loans = loanSteps.recentLoans(limit);
+
+        assertThat(loans)
+                .as("a stand may hold fewer loans than asked for, but never more")
+                .hasSizeLessThanOrEqualTo(limit);
     }
 }

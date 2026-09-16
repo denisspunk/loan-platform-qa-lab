@@ -3,14 +3,14 @@
 Which requirement each test defends, which levels defend it, and where nothing does.
 Requirements are derived from the business rules and the API contract in [README.md](README.md); the service has no separate requirements document, so this file is that document.
 
-Counted statically from the test sources on 2026-09-16, at commit `4442953`. The numbers match the pyramid table in the README: 120 tests in `mvn test` (unit, component, contract, integration, e2e), plus 4 smoke and 15 remote tests that run against a deployed stand.
+Counted statically from the test sources on 2026-09-16, at commit `4442953`. The numbers match the pyramid table in the README: 120 tests in `mvn test` (unit, component, contract, integration, e2e), plus 4 smoke and 24 regression tests that run against a deployed stand.
 
 ## How to read this
 
 | Column | Meaning |
 |---|---|
 | ID | `BR` business rule, `API` HTTP contract, `INT` device-lock partner, `EVT` asynchronous processing, `DATA` persistence, `OPS` delivery and stands |
-| Levels | which pyramid levels touch this requirement: U unit, C component, K contract, I integration, E e2e, S smoke, R remote |
+| Levels | which pyramid levels touch this requirement: U unit, C component, K contract, I integration, E e2e, S smoke, R regression |
 | Tests | `ClassName#method`; see the class index at the bottom for paths |
 | Status | **Covered** — at least one level asserts it; **Partial** — asserted only in part, the gap is named; **Known bug** — the current behaviour is pinned and the expected one is `@Disabled`; **Uncovered** — no automated test |
 
@@ -20,17 +20,17 @@ A parameterized method counts as one entry here, but as several tests in the tot
 
 | ID | Requirement | Levels | Tests | Status |
 |---|---|---|---|---|
-| BR-01 | Every full daily rate buys one day; the remainder is kept as credit | U, C, E, R | `UnlockPolicyTest#everyFullDailyRateBuysOneDay` (8 cases), `PaymentProcessorTest#fullDayPaymentUnlocksAndSchedulesTheRelock`, `PhoneLoanJourneyTest#customerPaysDayByDayUntilThePhoneIsTheirs`, `RemoteApiTest#smallPaymentsBuyADayOnlyWhenTheyAddUp` | Covered |
-| BR-02 | A payment below the daily rate only adds to the credit; the phone stays as it is | U, I, E, R | `UnlockPolicyTest#lessThanOneDayKeepsThePhoneAsItIs`, `LoanTest#keepDecisionOnlyAddsTheMoney`, `PaymentsApiTest#partialPaymentKeepsThePhoneLocked`, `PhoneLoanJourneyTest#smallPaymentsBuyADayOnlyWhenTheyAddUp`, `RemoteApiTest#smallPaymentsBuyADayOnlyWhenTheyAddUp` | Covered |
+| BR-01 | Every full daily rate buys one day; the remainder is kept as credit | U, C, E, R | `UnlockPolicyTest#everyFullDailyRateBuysOneDay` (8 cases), `PaymentProcessorTest#fullDayPaymentUnlocksAndSchedulesTheRelock`, `PhoneLoanJourneyTest#customerPaysDayByDayUntilThePhoneIsTheirs`, `StandRegressionTest#smallPaymentsBuyADayOnlyWhenTheyAddUp` | Covered |
+| BR-02 | A payment below the daily rate only adds to the credit; the phone stays as it is | U, I, E, R | `UnlockPolicyTest#lessThanOneDayKeepsThePhoneAsItIs`, `LoanTest#keepDecisionOnlyAddsTheMoney`, `PaymentsApiTest#partialPaymentKeepsThePhoneLocked`, `PhoneLoanJourneyTest#smallPaymentsBuyADayOnlyWhenTheyAddUp`, `StandRegressionTest#smallPaymentsBuyADayOnlyWhenTheyAddUp` | Covered |
 | BR-03 | Credit carries over and is added to the next payment | U, C, E | `UnlockPolicyTest#everyFullDailyRateBuysOneDay` (credit 50 + 50, credit 30 + 50), `PaymentConsumerTest#partialPaymentsAddUpInOrder`, `PhoneLoanJourneyTest#smallPaymentsBuyADayOnlyWhenTheyAddUp` | Covered |
-| BR-04 | A locked or expired phone is unlocked from now; an unlocked phone has days added on top | U, E, R | `UnlockPolicyTest#lockedPhoneIsUnlockedFromNow`, `#newDaysAreAddedOnTopOfAnUnlockedPhone`, `#expiredUnlockCountsNewDaysFromNow`, `LoanTest#unlockDecisionUnlocksThePhone`, `PhoneLoanJourneyTest#payingAgainWhileUnlockedExtendsThePhone`, `RemoteApiTest#payingAgainWhileUnlockedAddsADay` | Covered |
+| BR-04 | A locked or expired phone is unlocked from now; an unlocked phone has days added on top | U, E, R | `UnlockPolicyTest#lockedPhoneIsUnlockedFromNow`, `#newDaysAreAddedOnTopOfAnUnlockedPhone`, `#expiredUnlockCountsNewDaysFromNow`, `LoanTest#unlockDecisionUnlocksThePhone`, `PhoneLoanJourneyTest#payingAgainWhileUnlockedExtendsThePhone`, `StandRegressionTest#payingAgainWhileUnlockedAddsADay` | Covered |
 | BR-05 | The phone relocks by itself exactly at `unlockedUntil`, without a stored change | U, E | `LoanTest#phoneRelocksExactlyAtUnlockedUntil` (−1 s, 0 s, +1 s), `#relockByTimeDoesNotChangeTheStoredState`, `PhoneLoanJourneyTest#payingAgainWhileUnlockedExtendsThePhone` | Covered |
-| BR-06 | When the whole price is paid the loan is `PAID_OFF` and the phone `RELEASED` | U, I, E, R | `UnlockPolicyTest#paymentThatCoversThePriceReleasesThePhone` (299/300/350), `LoanTest#releaseDecisionPaysTheLoanOff`, `PaymentProcessorTest#paymentThatCoversThePriceReleasesTheLock`, `PaymentsApiTest#paymentThatCoversThePriceReleasesThePhone`, `PhoneLoanJourneyTest#customerPaysDayByDayUntilThePhoneIsTheirs`, `RemoteApiTest#paymentThatCoversThePriceReleasesThePhone` | Covered |
-| BR-07 | A payment redelivered with the same `paymentId` is not applied twice | U, C, I, R | `PaymentProcessorTest#samePaymentIdIsAppliedOnlyOnce`, `PaymentConsumerTest#duplicateDeliveryIsAppliedOnce`, `PaymentsApiTest#duplicateCallbackIsAppliedOnce`, `LoanHistoryApiTest#duplicatePaymentAppearsOnce`, `RemoteApiTest#duplicateCallbackIsAppliedOnce` | Covered |
-| BR-08 | A payment of zero or a negative amount is refused | U, I, R | `UnlockPolicyTest#nonPositiveAmountIsRejected` (0, −100), `PaymentsApiTest#nonPositiveAmountIsRejected` (0, −1), `RemoteApiTest#nonPositiveAmountIsRejected` (0, −1) | Covered |
+| BR-06 | When the whole price is paid the loan is `PAID_OFF` and the phone `RELEASED` | U, I, E, R | `UnlockPolicyTest#paymentThatCoversThePriceReleasesThePhone` (299/300/350), `LoanTest#releaseDecisionPaysTheLoanOff`, `PaymentProcessorTest#paymentThatCoversThePriceReleasesTheLock`, `PaymentsApiTest#paymentThatCoversThePriceReleasesThePhone`, `PhoneLoanJourneyTest#customerPaysDayByDayUntilThePhoneIsTheirs`, `StandRegressionTest#paymentThatCoversThePriceReleasesThePhone` | Covered |
+| BR-07 | A payment redelivered with the same `paymentId` is not applied twice | U, C, I, R | `PaymentProcessorTest#samePaymentIdIsAppliedOnlyOnce`, `PaymentConsumerTest#duplicateDeliveryIsAppliedOnce`, `PaymentsApiTest#duplicateCallbackIsAppliedOnce`, `LoanHistoryApiTest#duplicatePaymentAppearsOnce`, `StandRegressionTest#duplicateCallbackIsAppliedOnce` | Covered |
+| BR-08 | A payment of zero or a negative amount is refused | U, I, R | `UnlockPolicyTest#nonPositiveAmountIsRejected` (0, −100), `PaymentsApiTest#nonPositiveAmountIsRejected` (0, −1), `StandRegressionTest#nonPositiveAmountIsRejected` (0, −1) | Covered |
 | BR-09 | A new loan is `ACTIVE`, the phone `LOCKED`, the balance the whole price | U, I, S | `LoanTest#newLoanOwesTheWholePrice`, `LoansApiTest#newLoanStartsWithALockedPhone`, `StandSmokeTest#loanCanBeOpenedAndReadBack` | Covered |
-| BR-10 | Price and daily rate must be positive | U, I, R | `LoanTest#priceAndDailyRateMustBePositive` (4 cases), `LoansApiTest#loanWithAMissingOrInvalidFieldIsRejected` (6 cases), `RemoteApiTest#invalidLoanIsRejected` (3 cases) | Covered |
-| BR-11 | A payment to a paid-off loan changes nothing and is recorded as `LOAN_ALREADY_PAID_OFF` | I, R | `PaymentsApiTest#paymentToAPaidOffLoanChangesNothing`, `LoanHistoryApiTest#paymentToAPaidOffLoanIsRecordedAsAlreadyPaidOff`, `RemoteApiTest#paymentToAPaidOffLoanChangesNothing`, `#paymentHistoryShowsBothResults` | Known bug F-01: the money is accepted and lost; the tests pin today's behaviour, the product decision is open |
+| BR-10 | Price and daily rate must be positive | U, I, R | `LoanTest#priceAndDailyRateMustBePositive` (4 cases), `LoansApiTest#loanWithAMissingOrInvalidFieldIsRejected` (6 cases), `StandRegressionTest#invalidLoanIsRejected` (3 cases) | Covered |
+| BR-11 | A payment to a paid-off loan changes nothing and is recorded as `LOAN_ALREADY_PAID_OFF` | I, R | `PaymentsApiTest#paymentToAPaidOffLoanChangesNothing`, `LoanHistoryApiTest#paymentToAPaidOffLoanIsRecordedAsAlreadyPaidOff`, `StandRegressionTest#paymentToAPaidOffLoanChangesNothing`, `#paymentHistoryShowsBothResults` | Known bug F-01: the money is accepted and lost; the tests pin today's behaviour, the product decision is open |
 | BR-12 | Money paid above the price is tracked | U | `LoanTest#overpaymentShowsZeroBalance` | Known bug F-02: the test pins that the excess is invisible; the requirement itself is not implemented |
 | BR-13 | The unlock is counted from the moment the customer paid (`receivedAt`), not from the moment the service processed the payment | — | — | **Uncovered** — F-09; `receivedAt` is carried through the event and ignored. Needs a product decision before a test can assert anything |
 
@@ -38,21 +38,21 @@ A parameterized method counts as one entry here, but as several tests in the tot
 
 | ID | Requirement | Levels | Tests | Status |
 |---|---|---|---|---|
-| API-01 | `POST /loans` answers `201` with the loan | K, I, S, R | `LoanApiSchemaTest#createdLoanMatchesTheLoanSchema`, `LoansApiTest#newLoanStartsWithALockedPhone`, `#createdLoanIsReadBackUnchanged`, `StandSmokeTest#loanCanBeOpenedAndReadBack`, `RemoteApiTest#responsesMatchTheirSchemas` | Covered |
+| API-01 | `POST /loans` answers `201` with the loan | K, I, S, R | `LoanApiSchemaTest#createdLoanMatchesTheLoanSchema`, `LoansApiTest#newLoanStartsWithALockedPhone`, `#createdLoanIsReadBackUnchanged`, `StandSmokeTest#loanCanBeOpenedAndReadBack`, `StandRegressionTest#responsesMatchTheirSchemas` | Covered |
 | API-02 | `GET /loans/{id}` answers `200` with paid, balance, credit, status, deviceState, unlockedUntil | K, I | `LoanApiSchemaTest#loanMatchesTheLoanSchemaInEveryState` (LOCKED, UNLOCKED, RELEASED), `LoansApiTest#createdLoanIsReadBackUnchanged` | Covered |
-| API-03 | `GET /loans?limit=N` answers newest first | K, I, R | `LoanApiSchemaTest#loansListMatchesItsSchema`, `LoanHistoryApiTest#loansListShowsTheNewestLoanFirst`, `#listedLoanShowsItsCurrentState`, `RemoteApiTest#openedLoanIsListed` | Covered |
-| API-04 | `limit` is 1–100 and defaults to 20 | I | `LoanHistoryApiTest#loansListReturnsTwentyByDefault`, `#loansListRefusesAnInvalidLimit` (0, 101, −1, abc, empty) | **Partial** — only the refused values are asserted. The accepted boundaries `limit=1` and `limit=100` are never sent |
-| API-05 | `GET /loans/{id}/payments` answers the history with `APPLIED` or `LOAN_ALREADY_PAID_OFF` | K, I, R | `LoanApiSchemaTest#paymentHistoryMatchesItsSchema`, `LoanHistoryApiTest#newLoanHasAnEmptyHistory`, `#historyListsAppliedPaymentsInOrder`, `RemoteApiTest#paymentHistoryShowsBothResults` | Covered |
+| API-03 | `GET /loans?limit=N` answers newest first | K, I, R | `LoanApiSchemaTest#loansListMatchesItsSchema`, `LoanHistoryApiTest#loansListShowsTheNewestLoanFirst`, `#listedLoanShowsItsCurrentState`, `StandRegressionTest#openedLoanIsListed` | Covered |
+| API-04 | `limit` is 1–100 and defaults to 20 | I, R | `LoanHistoryApiTest#loansListReturnsTwentyByDefault`, `#loansListRefusesAnInvalidLimit` (0, 101, −1, abc, empty), `StandRegressionTest#loansListRefusesAnInvalidLimit`, `#loansListAcceptsTheEndsOfTheRange` (1, 100) | Covered |
+| API-05 | `GET /loans/{id}/payments` answers the history with `APPLIED` or `LOAN_ALREADY_PAID_OFF` | K, I, R | `LoanApiSchemaTest#paymentHistoryMatchesItsSchema`, `LoanHistoryApiTest#newLoanHasAnEmptyHistory`, `#historyListsAppliedPaymentsInOrder`, `StandRegressionTest#paymentHistoryShowsBothResults` | Covered |
 | API-06 | `POST /payments` answers `202` and applies the payment asynchronously | K, I, S | `LoanApiSchemaTest#acceptedPaymentMatchesItsSchema`, `PaymentsApiTest#acceptedPaymentIsAnsweredWithItsId`, `StandSmokeTest#paymentUnlocksThePhoneForADay` | Covered |
-| API-07 | A missing or blank required field is refused with `400` and a JSON error | K, I, R | `LoanApiSchemaTest#validationErrorMatchesTheErrorSchema`, `LoansApiTest#loanWithAMissingOrInvalidFieldIsRejected`, `PaymentsApiTest#paymentWithoutARequiredFieldIsRejected` (3 cases), `RemoteApiTest#invalidLoanIsRejected` | Covered |
-| API-08 | A body that is not JSON is refused with `400` | I | `LoansApiTest#loanBodyThatIsNotJsonIsRejected`, `PaymentsApiTest#paymentBodyThatIsNotJsonIsRejected` | Covered |
+| API-07 | A missing or blank required field is refused with `400` and a JSON error | K, I, R | `LoanApiSchemaTest#validationErrorMatchesTheErrorSchema`, `LoansApiTest#loanWithAMissingOrInvalidFieldIsRejected`, `PaymentsApiTest#paymentWithoutARequiredFieldIsRejected` (3 cases), `StandRegressionTest#invalidLoanIsRejected` | Covered |
+| API-08 | A body that is not JSON is refused with `400` | I, R | `LoansApiTest#loanBodyThatIsNotJsonIsRejected`, `PaymentsApiTest#paymentBodyThatIsNotJsonIsRejected`, `StandRegressionTest#loanBodyThatIsNotJsonIsRejected` | Covered |
 | API-09 | An error response does not expose internal parser messages | I | `LoansApiTest#brokenJsonErrorDoesNotExposeParserDetails` | Known bug F-12: `@Disabled`, Jackson's message still leaks |
-| API-10 | An unknown loan is `404` with a JSON error | K, I, R | `LoanApiSchemaTest#unknownLoanErrorMatchesTheErrorSchema`, `LoansApiTest#unknownLoanIsNotFound`, `PaymentsApiTest#paymentForUnknownLoanIsNotFound`, `LoanHistoryApiTest#historyOfAnUnknownLoanIsNotFound`, `RemoteApiTest#unknownLoanIsNotFound` | Covered |
-| API-11 | An empty loan id is refused | I | `LoansApiTest#emptyLoanIdIsAnsweredAsAnUnknownLoan` | Known bug F-08: `404` instead of `400`; the test pins today's answer |
+| API-10 | An unknown loan is `404` with a JSON error | K, I, R | `LoanApiSchemaTest#unknownLoanErrorMatchesTheErrorSchema`, `LoansApiTest#unknownLoanIsNotFound`, `PaymentsApiTest#paymentForUnknownLoanIsNotFound`, `LoanHistoryApiTest#historyOfAnUnknownLoanIsNotFound`, `StandRegressionTest#unknownLoanIsNotFound` | Covered |
+| API-11 | An empty loan id is refused | I, R | `LoansApiTest#emptyLoanIdIsAnsweredAsAnUnknownLoan`, `StandRegressionTest#emptyLoanIdIsAnsweredAsAnUnknownLoan` | Known bug F-08: `404` instead of `400`; the test pins today's answer |
 | API-12 | Unknown fields in a request body | I | `LoansApiTest#unknownFieldsAreIgnored` | Known bug F-11: silently ignored; the test pins it, the contract question is open |
-| API-13 | A wrong method on a known path is refused with `404` and a JSON error | K, I, R | `LoanApiSchemaTest#wrongMethodErrorMatchesTheErrorSchema`, `HealthAndRoutingTest#wrongMethodOnAKnownPathIsRefused` (5 cases), `RemoteApiTest#wrongMethodIsRefused` | Covered |
+| API-13 | A wrong method on a known path is refused with `404` and a JSON error | K, I, R | `LoanApiSchemaTest#wrongMethodErrorMatchesTheErrorSchema`, `HealthAndRoutingTest#wrongMethodOnAKnownPathIsRefused` (5 cases), `StandRegressionTest#wrongMethodIsRefused` | Covered |
 | API-14 | A path outside the API is refused with a JSON error, not an HTML page | I | `HealthAndRoutingTest#pathOutsideTheApiIsRefusedWithAJsonError` (3 cases) | Covered — F-10 fixed, the `@Disabled` test was switched on |
-| API-15 | Every response matches its published JSON schema | K, R | `LoanApiSchemaTest` (all 10 tests over `loan`, `loan-list`, `payment-accepted`, `payment-history`, `error`), `RemoteApiTest#responsesMatchTheirSchemas` | Covered |
+| API-15 | Every response matches its published JSON schema | K, R | `LoanApiSchemaTest` (all 10 tests over `loan`, `loan-list`, `payment-accepted`, `payment-history`, `error`), `StandRegressionTest#responsesMatchTheirSchemas` | Covered |
 | API-16 | `GET /health` answers `{"status":"UP"}` | I, S | `HealthAndRoutingTest#healthCheckAnswersUp`, `StandSmokeTest#healthCheckAnswersUp` | Covered |
 | API-17 | `GET /` serves the web UI | I, S | `HealthAndRoutingTest#homePageServesTheWebUi`, `StandSmokeTest#webUiPageIsServed` | **Partial** — only that the page is served. Nothing drives the page itself; see the gaps below |
 
@@ -99,7 +99,7 @@ A parameterized method counts as one entry here, but as several tests in the tot
 | ID | Requirement | Levels | Tests | Status |
 |---|---|---|---|---|
 | OPS-01 | A deployed stand is up and serves the UI | S | `StandSmokeTest#healthCheckAnswersUp`, `#webUiPageIsServed` | Covered — gates 1, 2 and 3 |
-| OPS-02 | The business rules hold on a deployed stand, over HTTP only | R | `RemoteApiTest` (12 methods, 15 tests) | Covered — dev and stage |
+| OPS-02 | The business rules hold on a deployed stand, over HTTP only | R | `StandRegressionTest` (16 methods, 24 tests) | Covered — dev and stage |
 | OPS-03 | `main` accepts only pull requests that pass the four pyramid stages | — | `.github/workflows` + branch protection | Covered by configuration, not by a test |
 | OPS-04 | A failed gate 3 rolls prod back to the previous commit | — | `delivery` workflow | **Uncovered** — the rollback path has never been exercised on purpose |
 
@@ -108,12 +108,12 @@ A parameterized method counts as one entry here, but as several tests in the tot
 | Group | Requirements | Covered | Partial | Known bug | Uncovered |
 |---|---|---|---|---|---|
 | BR — business rules | 13 | 10 | 0 | 2 | 1 |
-| API — HTTP contract | 17 | 12 | 2 | 3 | 0 |
+| API — HTTP contract | 17 | 13 | 1 | 3 | 0 |
 | INT — partner | 9 | 6 | 0 | 1 | 2 |
 | EVT — asynchronous | 5 | 4 | 0 | 0 | 1 |
 | DATA — persistence | 9 | 8 | 1 | 0 | 0 |
 | OPS — delivery | 4 | 3 | 0 | 0 | 1 |
-| **Total** | **57** | **43** | **3** | **6** | **5** |
+| **Total** | **57** | **44** | **2** | **6** | **5** |
 
 OPS-03 counts as covered, by branch protection rather than by a test; its row says so.
 
@@ -127,7 +127,7 @@ Tests behind those requirements, by level:
 | integration | 59 | `PaymentsApiTest` 15 (1 `@Disabled`), `LoansApiTest` 13 (1 `@Disabled`), `LoanHistoryApiTest` 13, `HealthAndRoutingTest` 10, `JdbcLoanRepositoryTest` 8 |
 | e2e | 3 | `PhoneLoanJourneyTest` 3 |
 | smoke | 4 | `StandSmokeTest` 4 |
-| remote | 15 | `RemoteApiTest` 15 |
+| regression | 24 | `StandRegressionTest` 24, of which 9 are `readonly` and may run on prod |
 
 ## Gaps, ordered by what they would cost to miss
 
@@ -136,7 +136,6 @@ Tests behind those requirements, by level:
 3. **API-17 — the web UI is only checked to be served.** Every rule the page shows is covered through the API it calls, but nothing asserts that the page renders them. Playwright e2e over the UI is the planned next step.
 4. **DATA-03 — durability across a restart (F-05).** The fix is in, the storage is asserted, but the restart itself is only verified by hand. A Testcontainers test that stops the service and replays the same `paymentId` would close it.
 5. **INT-09 — a repeated `unlock` (F-06)** and **BR-13 — `receivedAt` is ignored (F-09).** Both are open questions to the partner and to product; today's behaviour is understood but deliberately unpinned.
-6. **API-04 — the accepted `limit` boundaries.** Two cases, `limit=1` and `limit=100`, would make the validation rule symmetric. Cheap, and the only pure oversight on this list.
 7. **OPS-04 — the prod rollback.** Exercised only by a real failure, which is the worst time to find out it does not work.
 
 ## Findings back-trace
@@ -159,7 +158,7 @@ build when a tag names a finding BUGS.md does not list, or when a test's display
 
 | Finding | Pinned by | Expected behaviour | State |
 |---|---|---|---|
-| F-01 Payment for a paid-off loan is accepted and silently dropped | LoanHistoryApiTest#paymentToAPaidOffLoanIsRecordedAsAlreadyPaidOff, PaymentsApiTest#paymentToAPaidOffLoanChangesNothing, RemoteApiTest#paymentHistoryShowsBothResults, RemoteApiTest#paymentToAPaidOffLoanChangesNothing | — | pinned |
+| F-01 Payment for a paid-off loan is accepted and silently dropped | LoanHistoryApiTest#paymentToAPaidOffLoanIsRecordedAsAlreadyPaidOff, PaymentsApiTest#paymentToAPaidOffLoanChangesNothing, StandRegressionTest#paymentHistoryShowsBothResults, StandRegressionTest#paymentToAPaidOffLoanChangesNothing | — | pinned |
 | F-02 Overpayment on the final payment is not tracked | LoanTest#overpaymentShowsZeroBalance | — | pinned |
 | F-03 Scheduled relock is not cancelled when the loan is paid off | — | — | document only |
 | F-04 Partner failure between unlock and relock leaves the phone unlocked for good | PaymentConsumerTest#partnerFailureOnRelockLeavesTheLoanUnchanged, PaymentsApiTest#partnerFailureLeavesTheLoanUnchanged | PaymentConsumerTest#phoneIsNotUnlockedWhenTheRelockFails, PaymentsApiTest#phoneIsNotUnlockedWhenTheRelockFails | pinned |
@@ -202,7 +201,7 @@ build when a tag names a finding BUGS.md does not list, or when a test's display
 | `JdbcLoanRepositoryTest` | [integration/JdbcLoanRepositoryTest.java](service/src/test/java/lab/qa/tests/integration/JdbcLoanRepositoryTest.java) |
 | `PhoneLoanJourneyTest` | [e2e/PhoneLoanJourneyTest.java](service/src/test/java/lab/qa/tests/e2e/PhoneLoanJourneyTest.java) |
 | `StandSmokeTest` | [smoke/StandSmokeTest.java](service/src/test/java/lab/qa/tests/smoke/StandSmokeTest.java) |
-| `RemoteApiTest` | [remote/RemoteApiTest.java](service/src/test/java/lab/qa/tests/remote/RemoteApiTest.java) |
+| `StandRegressionTest` | [regression/StandRegressionTest.java](service/src/test/java/lab/qa/tests/regression/StandRegressionTest.java) |
 
 ## Keeping this file honest
 

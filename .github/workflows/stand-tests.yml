@@ -1,7 +1,7 @@
-# Tests against a deployed stand: smoke (quick, first check after a deploy) and remote (API
-# regression over HTTP). Run by hand from the Actions tab, or called by a pipeline after a deploy.
+# Tests against a deployed stand: smoke (quick, first check after a deploy), regression (the
+# business rules over HTTP) and readonly (the subset of those that changes nothing). Run by hand from the Actions tab, or called by a pipeline after a deploy.
 #
-# By hand you pick the stand by name, not by pasting an address: the remote tests write loans and
+# By hand you pick the stand by name, not by pasting an address: the regression tests write loans and
 # payments into whatever they are pointed at, and a pasted URL is one slip away from being prod.
 name: stand-tests
 
@@ -17,12 +17,13 @@ on:
       groups:
         description: Which tests to run
         required: true
-        default: smoke | remote
+        default: smoke | regression
         type: choice
         options:
           - smoke
-          - remote
-          - smoke | remote
+          - regression
+          - smoke | readonly
+          - smoke | regression
       ref:
         description: Commit or branch whose tests to run (empty = the branch this run starts from)
         required: false
@@ -35,7 +36,7 @@ on:
       groups:
         required: false
         type: string
-        default: smoke | remote
+        default: smoke | regression
       ref:
         description: Run the tests of the commit that was deployed
         required: false
@@ -94,16 +95,16 @@ jobs:
             echo "service=$service"
           } >> "$GITHUB_OUTPUT"
 
-      # The delivery pipeline runs smoke only on prod, deliberately: the remote regression opens
+      # The delivery pipeline keeps the writing tests off prod, deliberately: the regression suite opens
       # loans and takes payments, and on prod those are real rows. Anything that reaches this
       # workflow obeys the same rule, whoever called it and however they named the stand.
-      - name: Refuse the remote regression on prod
+      - name: Refuse the writing tests on prod
         env:
           ENVIRONMENT: ${{ steps.stand.outputs.environment }}
           TEST_GROUPS: ${{ inputs.groups }}
         run: |
-          if [[ "$ENVIRONMENT" == "prod" && "$TEST_GROUPS" == *remote* ]]; then
-            echo "::error::the remote tests write loans and payments; on prod run 'smoke' instead"
+          if [[ "$ENVIRONMENT" == "prod" && "$TEST_GROUPS" == *regression* ]]; then
+            echo "::error::the regression tests write loans and payments; on prod run 'smoke' or 'smoke | readonly'"
             exit 1
           fi
 

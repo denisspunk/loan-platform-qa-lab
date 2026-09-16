@@ -24,11 +24,11 @@ on:
       groups:
         description: Which tests to run against the stand afterwards
         required: true
-        default: smoke | remote
+        default: smoke | regression
         type: choice
         options:
           - smoke
-          - smoke | remote
+          - smoke | regression
 
 jobs:
   # says what is about to happen before the deploy waits for an approval, so the run page
@@ -48,8 +48,8 @@ jobs:
         run: |
           [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a full commit SHA: $COMMIT"; exit 1; }
           # stand-tests refuses this too, but only after the deploy; catching it here costs nothing
-          if [[ "$ENVIRONMENT" == "prod" && "$GROUPS" == *remote* ]]; then
-            echo "::error::the remote tests write loans and payments; on prod choose 'smoke'"
+          if [[ "$ENVIRONMENT" == "prod" && "$GROUPS" == *regression* ]]; then
+            echo "::error::the regression tests write loans and payments; on prod choose 'smoke' or 'smoke | readonly'"
             exit 1
           fi
           echo "sha=$COMMIT" >> "$GITHUB_OUTPUT"

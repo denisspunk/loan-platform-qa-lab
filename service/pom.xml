@@ -29,8 +29,8 @@
         <jacocoArgLine></jacocoArgLine>
 
         <!-- tests against a deployed stand run only on request:
-             mvn test -Dgroups="smoke | remote" -DexcludedGroups= -Dlab.baseUrl=https://... -->
-        <excludedGroups>smoke | remote</excludedGroups>
+             mvn test -Dgroups="smoke | regression" -DexcludedGroups= -Dlab.baseUrl=https://... -->
+        <excludedGroups>smoke | regression</excludedGroups>
     </properties>
 
     <dependencyManagement>

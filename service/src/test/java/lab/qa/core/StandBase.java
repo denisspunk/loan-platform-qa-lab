@@ -15,7 +15,7 @@ import static org.awaitility.Awaitility.await;
  * -Dlab.baseUrl. The clock and the partner are real, so these tests check behaviour, never exact dates or
  * partner calls. A free-tier stand may be asleep, so the first step waits until /health answers.
  */
-public abstract class RemoteBase {
+public abstract class StandBase {
 
     protected static LoansApi loansApi;
     protected static LoanSteps loanSteps;

@@ -1,7 +1,7 @@
 # Delivery of the service: one commit, chosen once, promoted dev -> stage -> prod through quality gates.
 #   gate 0: service-pyramid is green on main (this workflow starts only after that)
-#   gate 1: smoke and remote API regression on dev
-#   gate 2: smoke and remote API regression on stage
+#   gate 1: smoke and the stand regression on dev
+#   gate 2: smoke and the stand regression on stage
 #   approval: the prod environment waits for a reviewer
 #   gate 3: smoke on prod; if it fails, prod goes back to the commit it ran before
 #
@@ -71,7 +71,7 @@ jobs:
     uses: ./.github/workflows/stand-tests.yml
     with:
       base_url: ${{ needs.deploy-dev.outputs.url }}
-      groups: smoke | remote
+      groups: smoke | regression
       ref: ${{ needs.select-commit.outputs.commit }}
     secrets:
       render_api_key: ${{ secrets.RENDER_API_KEY }}
@@ -92,7 +92,7 @@ jobs:
     uses: ./.github/workflows/stand-tests.yml
     with:
       base_url: ${{ needs.deploy-stage.outputs.url }}
-      groups: smoke | remote
+      groups: smoke | regression
       ref: ${{ needs.select-commit.outputs.commit }}
     secrets:
       render_api_key: ${{ secrets.RENDER_API_KEY }}
@@ -130,7 +130,9 @@ jobs:
     uses: ./.github/workflows/stand-tests.yml
     with:
       base_url: ${{ needs.deploy-prod.outputs.url }}
-      groups: smoke
+      # readonly is the subset of the regression that opens no loan and takes no payment,
+      # so prod gets a contract check after a release without being left any test data
+      groups: smoke | readonly
       ref: ${{ needs.select-commit.outputs.commit }}
     secrets:
       render_api_key: ${{ secrets.RENDER_API_KEY }}
