@@ -62,6 +62,7 @@ class LoansApiTest extends BaseIT {
 
     @Test
     @DisplayName("Empty loan id is answered as an unknown loan (F-08)")
+    @Tag("F-08")
     void emptyLoanIdIsAnsweredAsAnUnknownLoan() {
         loansApi.getLoan("")
                 .then().statusCode(404)
@@ -78,6 +79,7 @@ class LoansApiTest extends BaseIT {
             {"deviceId": "350000000000001", "price": 300, "dailyRate": 0}    | dailyRate must be positive | dailyRate 0
             {"deviceId": "350000000000001", "price": 300}                    | dailyRate must be positive | no dailyRate, reported as zero (F-11)
             """)
+    @Tag("F-11")
     void loanWithAMissingOrInvalidFieldIsRejected(String body, String error, String caseName) {
         loansApi.postLoanBody(body)
                 .then().statusCode(400)
@@ -95,6 +97,7 @@ class LoansApiTest extends BaseIT {
     @Test
     @Disabled("F-12: the error still carries Jackson's own message after 'invalid JSON:'")
     @DisplayName("Broken JSON error does not expose parser details")
+    @Tag("F-12")
     void brokenJsonErrorDoesNotExposeParserDetails() {
         loansApi.postLoanBody("{not json")
                 .then().statusCode(400)
@@ -103,6 +106,7 @@ class LoansApiTest extends BaseIT {
 
     @Test
     @DisplayName("Unknown fields in the loan body are ignored (F-11)")
+    @Tag("F-11")
     void unknownFieldsAreIgnored() {
         String body = "{\"deviceId\": \"" + uniqueImei() + "\", \"price\": 300, \"dailyRate\": 100, \"colour\": \"red\"}";
 

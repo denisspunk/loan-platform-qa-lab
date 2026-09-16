@@ -136,6 +136,7 @@ class LoanTest {
 
     @Test
     @DisplayName("Overpayment shows a zero balance, the extra money is not visible (F-02)")
+    @Tag("F-02")
     void overpaymentShowsZeroBalance() {
         Loan loan = newLoan();
 

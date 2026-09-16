@@ -58,6 +58,7 @@ class HealthAndRoutingTest extends BaseIT {
             "GET,  /favicon.ico",
             "POST, /",
     })
+    @Tag("F-10")
     void pathOutsideTheApiIsRefusedWithAJsonError(String method, String path) {
         loansApi.request(method, path)
                 .then().statusCode(404)

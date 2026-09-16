@@ -83,6 +83,7 @@ class JdbcLoanRepositoryTest {
 
     @Test
     @DisplayName("Recording the same payment twice is not an error")
+    @Tag("F-05")
     void samePaymentRecordedTwiceIsNotAnError() {
         Loan loan = repository.save(new Loan(newId(), "350000000000003", 12_000, 100));
         ProcessedPayment payment = new ProcessedPayment("MPESA-" + loan.id(), loan.id(), 50, "APPLIED", NOW);
