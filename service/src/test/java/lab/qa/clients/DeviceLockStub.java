@@ -14,7 +14,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 
 /** The device-lock partner, played by WireMock: answers 200 to every call and remembers it. */
-public class KnoxStub {
+public class DeviceLockStub {
 
     private final WireMockServer server = new WireMockServer(options().dynamicPort());
 

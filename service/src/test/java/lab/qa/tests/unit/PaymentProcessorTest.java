@@ -4,7 +4,7 @@ import lab.loans.domain.DeviceState;
 import lab.loans.domain.Loan;
 import lab.loans.domain.LoanStatus;
 import lab.loans.events.PaymentReceived;
-import lab.loans.knox.DeviceLockClient;
+import lab.loans.partner.DeviceLockClient;
 import lab.loans.service.PaymentProcessor;
 import lab.loans.service.ProcessingResult;
 import lab.loans.service.UnknownLoanException;

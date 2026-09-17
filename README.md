@@ -2,7 +2,7 @@
 
 A backend for phone loans, a small web UI on top of it, and the strategy for testing both: from unit tests to quality gates on the way through dev, stage and prod.
 
-A customer takes a phone on credit. Every payment buys days, and while there are days left the phone stays unlocked. When they run out, the device-lock partner (a simplified stand-in for Samsung Knox) locks it again. Once the full price is paid, the lock is removed for good.
+A customer takes a phone on credit. Every payment buys days, and while there are days left the phone stays unlocked. When they run out, the device-lock partner (a simplified stand-in for a real device-locking service) locks it again. Once the full price is paid, the lock is removed for good.
 
 ## Service
 
@@ -62,7 +62,7 @@ Stack: Java 21, the JDK's built-in HTTP server, Jackson, plain JDBC and Postgres
 | `tests/` | the tests; one package = one level = one `@Tag` |
 | `dsl/` | `LoanSteps`, `PaymentSteps`: steps in business words; steps wait, assertions stay in the tests |
 | `data/` | `TestData`: a unique IMEI and paymentId per test, the `aLoan()` builder |
-| `clients/` | `LoansApi` (RestAssured), `KnoxStub` (WireMock), request and response models |
+| `clients/` | `LoansApi` (RestAssured), `DeviceLockStub` (WireMock), request and response models |
 | `core/` | `BaseIT` starts the partner stub and the service; `StandBase` for a deployed stand; `TestClock`; `Config` |
 
 Principles:
@@ -90,7 +90,7 @@ The service has four seeded bugs, off by default: `mvn test -Dlab.bugs=<bug>`. E
 |---|---|---|---|---|---|---|
 | `ROUNDING_UP` | days are rounded up | 8 | 2 | 0 | 2 | 1 |
 | `DOUBLE_PROCESSING` | a repeated paymentId is applied again | 1 | 1 | 0 | 1 | 0 |
-| `KNOX_EPOCH_DATE` | relockAt is sent to the partner as a number, not an ISO string | 0 | 0 | 2 | 1 | 2 |
+| `PARTNER_EPOCH_DATE` | relockAt is sent to the partner as a number, not an ISO string | 0 | 0 | 2 | 1 | 2 |
 | `ZERO_AMOUNT_ACCEPTED` | a payment of 0 KES is accepted | 0 | 0 | 0 | 1 | 0 |
 
 No bug goes unnoticed, and the table shows which level catches each one earliest and cheapest.
@@ -140,7 +140,7 @@ mvn test                                      # unit, component, contract, integ
 mvn test -Dgroups=unit                        # one level
 mvn test -Dgroups="integration | e2e"         # several levels
 mvn test -Dtest=UnlockPolicyTest              # one class
-mvn test -Dlab.bugs=KNOX_EPOCH_DATE           # turn on a seeded bug
+mvn test -Dlab.bugs=PARTNER_EPOCH_DATE        # turn on a seeded bug
 
 # against a deployed stand
 mvn test -Dgroups="smoke | regression" -DexcludedGroups= -Dlab.baseUrl=https://loan-platform-qa-lab.onrender.com -Dlab.asyncTimeoutSeconds=30

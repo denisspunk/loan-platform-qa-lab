@@ -60,11 +60,11 @@ A parameterized method counts as one entry here, but as several tests in the tot
 
 | ID | Requirement | Levels | Tests | Status |
 |---|---|---|---|---|
-| INT-01 | `unlock` is sent once, as an empty JSON object with the correlation id | K, I | `KnoxClientContractTest#unlockSendsAnEmptyJsonObject`, `PaymentsApiTest#acceptedPaymentUnlocksThePhoneThroughThePartner` | Covered |
-| INT-02 | The relock moment is sent as an ISO-8601 string, once | K, U, E | `KnoxClientContractTest#relockSendsAnIsoInstant`, `PaymentProcessorTest#fullDayPaymentUnlocksAndSchedulesTheRelock`, `PhoneLoanJourneyTest#payingAgainWhileUnlockedExtendsThePhone` | Covered — this is the pair that catches `KNOX_EPOCH_DATE` |
-| INT-03 | The relock moment keeps fractions of a second | K | `KnoxClientContractTest#relockKeepsFractionsOfASecond` | Covered — F-07 pinned as today's behaviour; the partner contract question is open |
-| INT-04 | `release` is sent once when the loan is paid off | K, U, I | `KnoxClientContractTest#releaseSendsAnEmptyJsonObject`, `PaymentProcessorTest#paymentThatCoversThePriceReleasesTheLock`, `PaymentsApiTest#paymentThatCoversThePriceReleasesThePhone` | Covered |
-| INT-05 | A partner error on any action becomes a `DeviceLockException` | K | `KnoxClientContractTest#partnerErrorBecomesDeviceLockException` (unlock, relock, release), `#unreachablePartnerBecomesDeviceLockException` | Covered |
+| INT-01 | `unlock` is sent once, as an empty JSON object with the correlation id | K, I | `DeviceLockClientContractTest#unlockSendsAnEmptyJsonObject`, `PaymentsApiTest#acceptedPaymentUnlocksThePhoneThroughThePartner` | Covered |
+| INT-02 | The relock moment is sent as an ISO-8601 string, once | K, U, E | `DeviceLockClientContractTest#relockSendsAnIsoInstant`, `PaymentProcessorTest#fullDayPaymentUnlocksAndSchedulesTheRelock`, `PhoneLoanJourneyTest#payingAgainWhileUnlockedExtendsThePhone` | Covered — this is the pair that catches `PARTNER_EPOCH_DATE` |
+| INT-03 | The relock moment keeps fractions of a second | K | `DeviceLockClientContractTest#relockKeepsFractionsOfASecond` | Covered — F-07 pinned as today's behaviour; the partner contract question is open |
+| INT-04 | `release` is sent once when the loan is paid off | K, U, I | `DeviceLockClientContractTest#releaseSendsAnEmptyJsonObject`, `PaymentProcessorTest#paymentThatCoversThePriceReleasesTheLock`, `PaymentsApiTest#paymentThatCoversThePriceReleasesThePhone` | Covered |
+| INT-05 | A partner error on any action becomes a `DeviceLockException` | K | `DeviceLockClientContractTest#partnerErrorBecomesDeviceLockException` (unlock, relock, release), `#unreachablePartnerBecomesDeviceLockException` | Covered |
 | INT-06 | A partial payment calls the partner not at all | U, I | `PaymentProcessorTest#partialPaymentDoesNotCallThePartner`, `PaymentsApiTest#partialPaymentKeepsThePhoneLocked` | Covered |
 | INT-07 | A partner failure between unlock and relock must not leave the phone unlocked | C, I | `PaymentConsumerTest#partnerFailureOnRelockLeavesTheLoanUnchanged` + `#phoneIsNotUnlockedWhenTheRelockFails`, `PaymentsApiTest#partnerFailureLeavesTheLoanUnchanged` + `#phoneIsNotUnlockedWhenTheRelockFails` | Known bug F-04: pinned twice at two levels, the expected behaviour `@Disabled` at both |
 | INT-08 | A scheduled relock is cancelled when the loan is paid off early | — | — | **Uncovered** — F-03, critical if the partner does not cancel it by itself. Blocked on the partner contract |
@@ -123,7 +123,7 @@ Tests behind those requirements, by level:
 |---|---|---|
 | unit | 35 | `UnlockPolicyTest` 17, `LoanTest` 13, `PaymentProcessorTest` 5 |
 | component | 5 | `PaymentConsumerTest` 5 (1 `@Disabled`) |
-| contract | 18 | `KnoxClientContractTest` 8, `LoanApiSchemaTest` 10 |
+| contract | 18 | `DeviceLockClientContractTest` 8, `LoanApiSchemaTest` 10 |
 | integration | 59 | `PaymentsApiTest` 15 (1 `@Disabled`), `LoansApiTest` 13 (1 `@Disabled`), `LoanHistoryApiTest` 13, `HealthAndRoutingTest` 10, `JdbcLoanRepositoryTest` 8 |
 | e2e | 3 | `PhoneLoanJourneyTest` 3 |
 | smoke | 4 | `StandSmokeTest` 4 |
@@ -164,7 +164,7 @@ build when a tag names a finding BUGS.md does not list, or when a test's display
 | F-04 Partner failure between unlock and relock leaves the phone unlocked for good | PaymentConsumerTest#partnerFailureOnRelockLeavesTheLoanUnchanged, PaymentsApiTest#partnerFailureLeavesTheLoanUnchanged | PaymentConsumerTest#phoneIsNotUnlockedWhenTheRelockFails, PaymentsApiTest#phoneIsNotUnlockedWhenTheRelockFails | pinned |
 | F-05 Duplicate protection lives in memory and is lost on restart | JdbcLoanRepositoryTest#samePaymentRecordedTwiceIsNotAnError | — | pinned |
 | F-06 Unlock is sent again for a phone that is already unlocked | — | — | document only |
-| F-07 `relockAt` is sent with microseconds; the contract example has whole seconds | KnoxClientContractTest#relockKeepsFractionsOfASecond | — | pinned |
+| F-07 `relockAt` is sent with microseconds; the contract example has whole seconds | DeviceLockClientContractTest#relockKeepsFractionsOfASecond | — | pinned |
 | F-08 `GET /loans/` with an empty id returns 404 instead of 400 | LoansApiTest#emptyLoanIdIsAnsweredAsAnUnknownLoan | — | pinned |
 | F-09 `receivedAt` is ignored; unlock time counts from processing, not from payment | — | — | document only |
 | F-10 A path outside the API gets an HTML 404 page instead of a JSON error | HealthAndRoutingTest#pathOutsideTheApiIsRefusedWithAJsonError | — | pinned |
@@ -179,7 +179,7 @@ build when a tag names a finding BUGS.md does not list, or when a test's display
 |---|---|---|---|---|---|---|---|
 | `ROUNDING_UP` | BR-01 | 8 | 2 | 0 | 2 | 1 | unit |
 | `DOUBLE_PROCESSING` | BR-07 | 1 | 1 | 0 | 1 | 0 | unit |
-| `KNOX_EPOCH_DATE` | INT-02 | 0 | 0 | 2 | 1 | 2 | contract |
+| `PARTNER_EPOCH_DATE` | INT-02 | 0 | 0 | 2 | 1 | 2 | contract |
 | `ZERO_AMOUNT_ACCEPTED` | BR-08 | 0 | 0 | 0 | 1 | 0 | integration |
 
 `ZERO_AMOUNT_ACCEPTED` is the interesting one: the rule is validated in the HTTP layer, so the unit tests of `UnlockPolicy` stay green and only an integration test catches it. That is the shape of the gap, not a flaw in the pyramid.
@@ -192,7 +192,7 @@ build when a tag names a finding BUGS.md does not list, or when a test's display
 | `LoanTest` | [unit/LoanTest.java](service/src/test/java/lab/qa/tests/unit/LoanTest.java) |
 | `PaymentProcessorTest` | [unit/PaymentProcessorTest.java](service/src/test/java/lab/qa/tests/unit/PaymentProcessorTest.java) |
 | `PaymentConsumerTest` | [component/PaymentConsumerTest.java](service/src/test/java/lab/qa/tests/component/PaymentConsumerTest.java) |
-| `KnoxClientContractTest` | [contract/KnoxClientContractTest.java](service/src/test/java/lab/qa/tests/contract/KnoxClientContractTest.java) |
+| `DeviceLockClientContractTest` | [contract/DeviceLockClientContractTest.java](service/src/test/java/lab/qa/tests/contract/DeviceLockClientContractTest.java) |
 | `LoanApiSchemaTest` | [contract/LoanApiSchemaTest.java](service/src/test/java/lab/qa/tests/contract/LoanApiSchemaTest.java) |
 | `LoansApiTest` | [integration/LoansApiTest.java](service/src/test/java/lab/qa/tests/integration/LoansApiTest.java) |
 | `PaymentsApiTest` | [integration/PaymentsApiTest.java](service/src/test/java/lab/qa/tests/integration/PaymentsApiTest.java) |

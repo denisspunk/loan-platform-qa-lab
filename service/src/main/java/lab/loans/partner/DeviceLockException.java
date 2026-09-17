@@ -1,4 +1,4 @@
-package lab.loans.knox;
+package lab.loans.partner;
 
 public class DeviceLockException extends RuntimeException {
 

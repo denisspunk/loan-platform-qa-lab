@@ -1,9 +1,9 @@
 package lab.qa.tests.contract;
 
-import lab.loans.knox.DeviceLockClient;
-import lab.loans.knox.DeviceLockException;
-import lab.loans.knox.HttpDeviceLockClient;
-import lab.qa.clients.KnoxStub;
+import lab.loans.partner.DeviceLockClient;
+import lab.loans.partner.DeviceLockException;
+import lab.loans.partner.HttpDeviceLockClient;
+import lab.qa.clients.DeviceLockStub;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,26 +29,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @Tag("contract")
 @DisplayName("Partner contract: what our device-lock client sends to the partner")
-class KnoxClientContractTest {
+class DeviceLockClientContractTest {
 
-    private static final KnoxStub knox = new KnoxStub();
+    private static final DeviceLockStub partner = new DeviceLockStub();
 
     private DeviceLockClient client;
     private String imei;
 
     @BeforeAll
     static void startStub() {
-        knox.start();
+        partner.start();
     }
 
     @AfterAll
     static void stopStub() {
-        knox.stop();
+        partner.stop();
     }
 
     @BeforeEach
     void newClientAndPhone() {
-        client = new HttpDeviceLockClient(knox.baseUrl());
+        client = new HttpDeviceLockClient(partner.baseUrl());
         imei = uniqueImei();
     }
 
@@ -57,7 +57,7 @@ class KnoxClientContractTest {
     void unlockSendsAnEmptyJsonObject() {
         client.unlock(imei, "MPESA-1");
 
-        knox.server().verify(1, postRequestedFor(urlEqualTo("/devices/" + imei + "/unlock"))
+        partner.server().verify(1, postRequestedFor(urlEqualTo("/devices/" + imei + "/unlock"))
                 .withHeader("Content-Type", equalTo("application/json"))
                 .withHeader("X-Correlation-Id", equalTo("MPESA-1"))
                 .withRequestBody(equalToJson("{}")));
@@ -68,7 +68,7 @@ class KnoxClientContractTest {
     void relockSendsAnIsoInstant() {
         client.scheduleRelock(imei, Instant.parse("2026-09-16T09:00:00Z"), "MPESA-2");
 
-        knox.server().verify(1, postRequestedFor(urlEqualTo("/devices/" + imei + "/relock"))
+        partner.server().verify(1, postRequestedFor(urlEqualTo("/devices/" + imei + "/relock"))
                 .withHeader("Content-Type", equalTo("application/json"))
                 .withHeader("X-Correlation-Id", equalTo("MPESA-2"))
                 .withRequestBody(equalToJson("{\"relockAt\": \"2026-09-16T09:00:00Z\"}")));
@@ -80,7 +80,7 @@ class KnoxClientContractTest {
     void relockKeepsFractionsOfASecond() {
         client.scheduleRelock(imei, Instant.parse("2026-09-16T09:00:00.244206Z"), "MPESA-3");
 
-        knox.server().verify(1, postRequestedFor(urlEqualTo("/devices/" + imei + "/relock"))
+        partner.server().verify(1, postRequestedFor(urlEqualTo("/devices/" + imei + "/relock"))
                 .withRequestBody(equalToJson("{\"relockAt\": \"2026-09-16T09:00:00.244206Z\"}")));
     }
 
@@ -89,7 +89,7 @@ class KnoxClientContractTest {
     void releaseSendsAnEmptyJsonObject() {
         client.release(imei, "MPESA-4");
 
-        knox.server().verify(1, postRequestedFor(urlEqualTo("/devices/" + imei + "/release"))
+        partner.server().verify(1, postRequestedFor(urlEqualTo("/devices/" + imei + "/release"))
                 .withHeader("Content-Type", equalTo("application/json"))
                 .withHeader("X-Correlation-Id", equalTo("MPESA-4"))
                 .withRequestBody(equalToJson("{}")));
@@ -99,7 +99,7 @@ class KnoxClientContractTest {
     @ParameterizedTest(name = "{0} answered 503 -> DeviceLockException")
     @ValueSource(strings = {"unlock", "relock", "release"})
     void partnerErrorBecomesDeviceLockException(String action) {
-        knox.respondWith(imei, action, 503);
+        partner.respondWith(imei, action, 503);
 
         assertThatThrownBy(() -> call(action))
                 .isInstanceOf(DeviceLockException.class)

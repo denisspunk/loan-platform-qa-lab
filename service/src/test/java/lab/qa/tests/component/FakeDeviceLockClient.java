@@ -1,7 +1,7 @@
 package lab.qa.tests.component;
 
-import lab.loans.knox.DeviceLockClient;
-import lab.loans.knox.DeviceLockException;
+import lab.loans.partner.DeviceLockClient;
+import lab.loans.partner.DeviceLockException;
 
 import java.time.Instant;
 import java.util.List;

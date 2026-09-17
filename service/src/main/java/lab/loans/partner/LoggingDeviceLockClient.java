@@ -1,4 +1,4 @@
-package lab.loans.knox;
+package lab.loans.partner;
 
 import java.time.Instant;
 
@@ -7,16 +7,16 @@ public class LoggingDeviceLockClient implements DeviceLockClient {
 
     @Override
     public void unlock(String deviceId, String correlationId) {
-        System.out.printf("[knox] unlock %s (correlation %s)%n", deviceId, correlationId);
+        System.out.printf("[partner] unlock %s (correlation %s)%n", deviceId, correlationId);
     }
 
     @Override
     public void scheduleRelock(String deviceId, Instant relockAt, String correlationId) {
-        System.out.printf("[knox] relock %s at %s (correlation %s)%n", deviceId, relockAt, correlationId);
+        System.out.printf("[partner] relock %s at %s (correlation %s)%n", deviceId, relockAt, correlationId);
     }
 
     @Override
     public void release(String deviceId, String correlationId) {
-        System.out.printf("[knox] release %s (correlation %s)%n", deviceId, correlationId);
+        System.out.printf("[partner] release %s (correlation %s)%n", deviceId, correlationId);
     }
 }

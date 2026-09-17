@@ -1,4 +1,4 @@
-package lab.loans.knox;
+package lab.loans.partner;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,7 +14,7 @@ import java.time.Instant;
 import java.util.Map;
 
 /**
- * Partner contract (simplified, not the real Samsung Knox API):
+ * Partner contract (simplified, not the real a device-locking service API):
  *   POST /devices/{deviceId}/unlock   body {}
  *   POST /devices/{deviceId}/relock   body {"relockAt": "2026-09-16T09:00:00Z"}
  *   POST /devices/{deviceId}/release  body {}
@@ -37,7 +37,7 @@ public class HttpDeviceLockClient implements DeviceLockClient {
 
     @Override
     public void scheduleRelock(String deviceId, Instant relockAt, String correlationId) {
-        Object when = Bugs.KNOX_EPOCH_DATE.isOn() ? relockAt.toEpochMilli() : relockAt.toString();
+        Object when = Bugs.PARTNER_EPOCH_DATE.isOn() ? relockAt.toEpochMilli() : relockAt.toString();
         post("/devices/" + deviceId + "/relock", Map.of("relockAt", when), correlationId);
     }
 

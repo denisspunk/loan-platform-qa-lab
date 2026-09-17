@@ -14,7 +14,7 @@ public enum Bugs {
     /** PaymentProcessor forgets processed payment ids: a redelivered event is applied twice. */
     DOUBLE_PROCESSING,
     /** HttpDeviceLockClient sends relockAt as epoch millis instead of an ISO-8601 string. */
-    KNOX_EPOCH_DATE,
+    PARTNER_EPOCH_DATE,
     /** POST /payments accepts amount 0 instead of rejecting it with 400. */
     ZERO_AMOUNT_ACCEPTED;
 
