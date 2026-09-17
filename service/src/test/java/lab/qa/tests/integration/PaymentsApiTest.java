@@ -96,7 +96,7 @@ class PaymentsApiTest extends BaseIT {
             softly.assertThat(paid.deviceState()).isEqualTo("UNLOCKED");
             softly.assertThat(paid.unlockedUntil()).isEqualTo(expectedUntil);
         });
-        assertThat(knox.callsFor(loan.deviceId(), "relock"))
+        assertThat(partner.callsFor(loan.deviceId(), "relock"))
                 .singleElement()
                 .satisfies(call -> {
                     assertThat(call.getHeader("X-Correlation-Id")).isEqualTo(paymentId);
@@ -115,9 +115,9 @@ class PaymentsApiTest extends BaseIT {
             softly.assertThat(paid.deviceState()).isEqualTo("LOCKED");
             softly.assertThat(paid.credit()).isEqualTo(60);
             softly.assertThat(paid.unlockedUntil()).isNull();
-            softly.assertThat(knox.callsFor(loan.deviceId(), "unlock")).isEmpty();
-            softly.assertThat(knox.callsFor(loan.deviceId(), "relock")).isEmpty();
-            softly.assertThat(knox.callsFor(loan.deviceId(), "release")).isEmpty();
+            softly.assertThat(partner.callsFor(loan.deviceId(), "unlock")).isEmpty();
+            softly.assertThat(partner.callsFor(loan.deviceId(), "relock")).isEmpty();
+            softly.assertThat(partner.callsFor(loan.deviceId(), "release")).isEmpty();
         });
     }
 
@@ -134,11 +134,11 @@ class PaymentsApiTest extends BaseIT {
             softly.assertThat(paid.deviceState()).isEqualTo("RELEASED");
             softly.assertThat(paid.balance()).isZero();
             softly.assertThat(paid.unlockedUntil()).isNull();
-            softly.assertThat(knox.callsFor(loan.deviceId(), "release"))
+            softly.assertThat(partner.callsFor(loan.deviceId(), "release"))
                     .singleElement()
                     .satisfies(call -> assertThat(call.getHeader("X-Correlation-Id")).isEqualTo(paymentId));
-            softly.assertThat(knox.callsFor(loan.deviceId(), "unlock")).isEmpty();
-            softly.assertThat(knox.callsFor(loan.deviceId(), "relock")).isEmpty();
+            softly.assertThat(partner.callsFor(loan.deviceId(), "unlock")).isEmpty();
+            softly.assertThat(partner.callsFor(loan.deviceId(), "relock")).isEmpty();
         });
     }
 
@@ -152,7 +152,7 @@ class PaymentsApiTest extends BaseIT {
         assertSoftly(softly -> {
             softly.assertThat(after.paid()).isEqualTo(501);
             softly.assertThat(after.credit()).isEqualTo(1);
-            softly.assertThat(knox.callsFor(loan.deviceId(), "unlock")).hasSize(1);
+            softly.assertThat(partner.callsFor(loan.deviceId(), "unlock")).hasSize(1);
         });
     }
 
@@ -171,8 +171,8 @@ class PaymentsApiTest extends BaseIT {
         assertSoftly(softly -> {
             softly.assertThat(after.paid()).isEqualTo(300);
             softly.assertThat(after.status()).isEqualTo("PAID_OFF");
-            softly.assertThat(knox.callsFor(loan.deviceId(), "release")).as("only the payoff released the phone").hasSize(1);
-            softly.assertThat(knox.callsFor(loan.deviceId(), "unlock")).isEmpty();
+            softly.assertThat(partner.callsFor(loan.deviceId(), "release")).as("only the payoff released the phone").hasSize(1);
+            softly.assertThat(partner.callsFor(loan.deviceId(), "unlock")).isEmpty();
         });
     }
 
@@ -183,7 +183,7 @@ class PaymentsApiTest extends BaseIT {
     @Tag("F-04")
     void partnerFailureLeavesTheLoanUnchanged() {
         LoanJson loan = loanSteps.openLoan(aLoan().price(12_000).dailyRate(100));
-        knox.respondWith(loan.deviceId(), "relock", 503);
+        partner.respondWith(loan.deviceId(), "relock", 503);
 
         loansApi.postPayment(new PaymentRequest(uniquePaymentId(), loan.id(), 300))
                 .then().statusCode(202);
@@ -206,12 +206,12 @@ class PaymentsApiTest extends BaseIT {
     @Tag("F-04")
     void phoneIsNotUnlockedWhenTheRelockFails() {
         LoanJson loan = loanSteps.openLoan(aLoan().price(12_000).dailyRate(100));
-        knox.respondWith(loan.deviceId(), "relock", 503);
+        partner.respondWith(loan.deviceId(), "relock", 503);
 
         loansApi.postPayment(new PaymentRequest(uniquePaymentId(), loan.id(), 300))
                 .then().statusCode(202);
         paymentSteps.waitForQueuedPayments();
 
-        assertThat(knox.callsFor(loan.deviceId(), "unlock")).isEmpty();
+        assertThat(partner.callsFor(loan.deviceId(), "unlock")).isEmpty();
     }
 }

@@ -2,9 +2,9 @@ package lab.loans;
 
 import lab.loans.api.HttpApi;
 import lab.loans.events.InMemoryEventBus;
-import lab.loans.knox.DeviceLockClient;
-import lab.loans.knox.HttpDeviceLockClient;
-import lab.loans.knox.LoggingDeviceLockClient;
+import lab.loans.partner.DeviceLockClient;
+import lab.loans.partner.HttpDeviceLockClient;
+import lab.loans.partner.LoggingDeviceLockClient;
 import lab.loans.service.PaymentProcessor;
 import lab.loans.store.InMemoryLoanRepository;
 import lab.loans.store.JdbcLoanRepository;
@@ -64,7 +64,7 @@ public final class LoanPlatformApp implements AutoCloseable {
     /**
      * Local run: Run in the IDE. In a container the BIND_HOST and PORT environment variables
      * (Render sets PORT) win over -Dhost and -Dport. DATABASE_URL switches storage from memory to Postgres.
-     * -Dknox.url=... sends real HTTP to a stub.
+     * -Dpartner.url=... sends real HTTP to a stub.
      */
     public static void main(String[] args) throws IOException {
         String host = setting("BIND_HOST", "host", "127.0.0.1");
@@ -74,10 +74,10 @@ public final class LoanPlatformApp implements AutoCloseable {
         LoanRepository loans = postgres
                 ? JdbcLoanRepository.fromDatabaseUrl(databaseUrl).migrate()
                 : new InMemoryLoanRepository();
-        String knoxUrl = System.getProperty("knox.url");
-        DeviceLockClient deviceLock = knoxUrl == null
+        String partnerUrl = System.getProperty("partner.url");
+        DeviceLockClient deviceLock = partnerUrl == null
                 ? new LoggingDeviceLockClient()
-                : new HttpDeviceLockClient(knoxUrl);
+                : new HttpDeviceLockClient(partnerUrl);
         LoanPlatformApp app = start(host, port, loans, deviceLock, Clock.systemUTC());
         System.out.println("Loan platform is listening on http://" + host + ":" + app.port
                 + " with " + (postgres ? "Postgres" : "in-memory") + " storage");

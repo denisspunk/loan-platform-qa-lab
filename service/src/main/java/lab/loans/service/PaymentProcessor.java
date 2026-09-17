@@ -6,7 +6,7 @@ import lab.loans.domain.LoanStatus;
 import lab.loans.domain.UnlockDecision;
 import lab.loans.domain.UnlockPolicy;
 import lab.loans.events.PaymentReceived;
-import lab.loans.knox.DeviceLockClient;
+import lab.loans.partner.DeviceLockClient;
 import lab.loans.store.LoanRepository;
 import lab.loans.store.ProcessedPayment;
 

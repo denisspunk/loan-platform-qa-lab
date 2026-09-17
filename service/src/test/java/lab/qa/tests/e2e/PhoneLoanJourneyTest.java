@@ -38,8 +38,8 @@ class PhoneLoanJourneyTest extends BaseIT {
         assertSoftly(softly -> {
             softly.assertThat(afterFirstDay.deviceState()).isEqualTo("UNLOCKED");
             softly.assertThat(afterFirstDay.unlockedUntil()).isEqualTo(firstRelock);
-            softly.assertThat(knox.callsFor(loan.deviceId(), "unlock")).hasSize(1);
-            softly.assertThat(knox.callsFor(loan.deviceId(), "relock"))
+            softly.assertThat(partner.callsFor(loan.deviceId(), "unlock")).hasSize(1);
+            softly.assertThat(partner.callsFor(loan.deviceId(), "relock"))
                     .extracting(call -> JsonPath.from(call.getBodyAsString()).getString("relockAt"))
                     .containsExactly(firstRelock);
         });
@@ -54,7 +54,7 @@ class PhoneLoanJourneyTest extends BaseIT {
             softly.assertThat(paidOff.status()).isEqualTo("PAID_OFF");
             softly.assertThat(paidOff.deviceState()).isEqualTo("RELEASED");
             softly.assertThat(paidOff.balance()).isZero();
-            softly.assertThat(knox.callsFor(loan.deviceId(), "release")).hasSize(1);
+            softly.assertThat(partner.callsFor(loan.deviceId(), "release")).hasSize(1);
         });
     }
 
@@ -67,14 +67,14 @@ class PhoneLoanJourneyTest extends BaseIT {
         assertSoftly(softly -> {
             softly.assertThat(afterSixty.deviceState()).isEqualTo("LOCKED");
             softly.assertThat(afterSixty.credit()).isEqualTo(60);
-            softly.assertThat(knox.callsFor(loan.deviceId(), "unlock")).as("unlock calls after 60 KES").isEmpty();
+            softly.assertThat(partner.callsFor(loan.deviceId(), "unlock")).as("unlock calls after 60 KES").isEmpty();
         });
 
         LoanJson afterHundredTwenty = paymentSteps.pay(loan, 60);
         assertSoftly(softly -> {
             softly.assertThat(afterHundredTwenty.deviceState()).isEqualTo("UNLOCKED");
             softly.assertThat(afterHundredTwenty.credit()).isEqualTo(20);
-            softly.assertThat(knox.callsFor(loan.deviceId(), "unlock")).as("unlock calls after 120 KES").hasSize(1);
+            softly.assertThat(partner.callsFor(loan.deviceId(), "unlock")).as("unlock calls after 120 KES").hasSize(1);
         });
     }
 
@@ -93,7 +93,7 @@ class PhoneLoanJourneyTest extends BaseIT {
         assertSoftly(softly -> {
             softly.assertThat(extended.deviceState()).isEqualTo("UNLOCKED");
             softly.assertThat(extended.unlockedUntil()).isEqualTo(newUntil.toString());
-            softly.assertThat(knox.callsFor(loan.deviceId(), "relock"))
+            softly.assertThat(partner.callsFor(loan.deviceId(), "relock"))
                     .extracting(call -> JsonPath.from(call.getBodyAsString()).getString("relockAt"))
                     .containsExactly(start.plus(Duration.ofDays(1)).toString(), newUntil.toString());
         });

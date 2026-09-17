@@ -1,8 +1,8 @@
 package lab.qa.core;
 
 import lab.loans.LoanPlatformApp;
-import lab.loans.knox.HttpDeviceLockClient;
-import lab.qa.clients.KnoxStub;
+import lab.loans.partner.HttpDeviceLockClient;
+import lab.qa.clients.DeviceLockStub;
 import lab.qa.clients.LoansApi;
 import lab.qa.dsl.LoanSteps;
 import lab.qa.dsl.PaymentSteps;
@@ -19,7 +19,7 @@ import java.io.IOException;
 public abstract class BaseIT {
 
     protected static TestClock clock;
-    protected static KnoxStub knox;
+    protected static DeviceLockStub partner;
     protected static LoanPlatformApp app;
     protected static LoansApi loansApi;
 
@@ -29,9 +29,9 @@ public abstract class BaseIT {
     @BeforeAll
     static void startPlatform() throws IOException {
         clock = TestClock.startingAt(Config.START_TIME);
-        knox = new KnoxStub();
-        knox.start();
-        app = LoanPlatformApp.start(0, new HttpDeviceLockClient(knox.baseUrl()), clock);
+        partner = new DeviceLockStub();
+        partner.start();
+        app = LoanPlatformApp.start(0, new HttpDeviceLockClient(partner.baseUrl()), clock);
         loansApi = new LoansApi(app.baseUrl());
 
         loanSteps = new LoanSteps(loansApi);
@@ -41,6 +41,6 @@ public abstract class BaseIT {
     @AfterAll
     static void stopPlatform() {
         app.close();
-        knox.stop();
+        partner.stop();
     }
 }

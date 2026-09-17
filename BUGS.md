@@ -12,7 +12,7 @@ Not to be confused with `service/src/main/java/lab/loans/Bugs.java`: those are s
 | F-01 | Payment for a paid-off loan is accepted and silently dropped | High | reproduced live | Partly addressed (a344ffb): recorded in Postgres; money handling still needs product decision |
 | F-02 | Overpayment on the final payment is not tracked | High | reproduced live | Open: needs product decision |
 | F-03 | Scheduled relock is not cancelled when the loan is paid off | Critical, if the partner does not cancel it | observed in log | Open: question to partner contract |
-| F-04 | Partner failure between unlock and relock leaves the phone unlocked for good | High | code reading | Open: reproduce with KnoxStub |
+| F-04 | Partner failure between unlock and relock leaves the phone unlocked for good | High | code reading | Open: reproduce with DeviceLockStub |
 | F-05 | Duplicate protection lives in memory and is lost on restart | Medium | code reading | Fixed (a344ffb) when running with Postgres; verified locally and on Render |
 | F-06 | Unlock is sent again for a phone that is already unlocked | Low | observed in log | Open: question to partner contract |
 | F-07 | `relockAt` is sent with microseconds; the contract example has whole seconds | Low | observed in log | Open: question to partner contract |
@@ -73,8 +73,8 @@ Still open: the API answers `202`, nobody is alerted, and what happens to the mo
 
 **Steps:** on loan `LN-b000a5a5` (see F-01), partner calls in order:
 ```
-[knox] relock  350000000000001 at 2026-09-17T08:54:19.244206Z (correlation MPESA-2)
-[knox] release 350000000000001 (correlation MPESA-3)
+[partner] relock  350000000000001 at 2026-09-17T08:54:19.244206Z (correlation MPESA-2)
+[partner] release 350000000000001 (correlation MPESA-3)
 ```
 
 **Actual:** the service sends `release` and never cancels the relock it scheduled for 2026-09-17.
@@ -137,7 +137,7 @@ Not covered: two service instances processing the same payment at the same momen
 
 **Severity:** Low / contract question.
 
-**Observed:** `relock ... at 2026-09-16T08:54:19.244206Z`. The partner contract in [HttpDeviceLockClient.java](service/src/main/java/lab/loans/knox/HttpDeviceLockClient.java) shows `"relockAt": "2026-09-16T09:00:00Z"`. The HTTP client sends `relockAt.toString()` ([line 40](service/src/main/java/lab/loans/knox/HttpDeviceLockClient.java#L40)), which keeps the fraction.
+**Observed:** `relock ... at 2026-09-16T08:54:19.244206Z`. The partner contract in [HttpDeviceLockClient.java](service/src/main/java/lab/loans/partner/HttpDeviceLockClient.java) shows `"relockAt": "2026-09-16T09:00:00Z"`. The HTTP client sends `relockAt.toString()` ([line 40](service/src/main/java/lab/loans/partner/HttpDeviceLockClient.java#L40)), which keeps the fraction.
 
 **Question:** does the real partner parse fractional seconds? A contract test should pin the exact format.
 
